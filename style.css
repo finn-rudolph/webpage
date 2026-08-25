@@ -1,9 +1,20 @@
+html {
+    height: 100%;
+}
+
 body {
     margin: 0;
     font-family: "Source Code Pro", monospace;
     font-size: 100%;
     color: #222;
     background: #fff;
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+}
+
+main {
+    flex: 1;
 }
 
 header {
@@ -38,8 +49,9 @@ footer {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     gap: 1rem;
-    margin-top: 6rem;
+    margin-top: 4rem;
     padding: 2rem;
+    line-height: 0;
 }
 
 footer a {

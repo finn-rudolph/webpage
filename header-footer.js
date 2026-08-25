@@ -11,7 +11,7 @@ let header = `
 
 let footer = `
   <footer class="footer">
-      <div class="footer-center"></div>
+      <div class="footer-left"></div>
 
       <div class="footer-center">
       <a href="https://github.com/finn-rudolph" aria-label="GitHub">
