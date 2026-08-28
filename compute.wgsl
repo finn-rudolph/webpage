@@ -20,10 +20,10 @@ var<storage, read_write> u0: array<vec2f>;
 var<storage, read_write> u1: array<vec2f>;
 
 @group(0) @binding(3)
-var<storage, read_write> s0: array<f32>;
+var s0: texture_storage_2d<r32float, read_write>;
 
 @group(0) @binding(4)
-var<storage, read_write> s1: array<f32>;
+var s1: texture_storage_2d<r32float, read_write>;
 
 @group(0) @binding(5)
 var<uniform> params: Params;
@@ -41,11 +41,16 @@ fn update_velocity(
 fn update_scalar_field(
     @builtin(global_invocation_id) id: vec3u,
 ) {
-    s1[id.y * params.width + id.x] = params.dt;
 }
 
 fn add_force(id: vec3u) {
 }
 
 fn add_source(id: vec3u) {
+    let dx = i32(id.x) - 128;
+    let dy = i32(id.y) - 128;
+    let dis_squared = dx * dx + dy * dy;
+    if dis_squared < 100 {
+        s1[vec2u(id.y, id.x)] = s0[id.y * params.width + id.x] + f32(100 - dis_squared);
+    }
 }
