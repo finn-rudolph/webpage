@@ -48,16 +48,15 @@ footer {
     border-top: 0.1em solid #222;
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
-    gap: 1rem;
-    margin-top: 4rem;
+    margin-top: 2rem;
     padding: 2rem;
     line-height: 0;
 }
 
 footer a {
     display: inline-flex;
-    width: 2.5rem;
-    height: 2.5rem;
+    width: 2rem;
+    height: 2rem;
     color: #444;
 }
 
@@ -73,12 +72,14 @@ footer a:hover {
 
 .footer-center {
     justify-self: center;
+    display: flex;
+    gap: 1.5rem;
 }
 
 .footer-right {
     justify-self: right;
-    width: 2.5rem;
-    height: 2.5rem;
+    width: 2rem;
+    height: 2rem;
 }
 
 .footer-right video {
