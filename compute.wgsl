@@ -1,8 +1,10 @@
 struct Params {
     simulation_size: vec2u, // number of simulation cells in each axis (points for which we store a velocity etc.)
-    mouse_radius: f32,
+    mouse_radius: f32, // in normalized coords
     dt: f32,
     aspect_ratio: f32, // = width / height
+    num_tracers: u32,
+    tracer_diam: f32,
 }
 
 struct Mouse {
@@ -85,14 +87,29 @@ fn project(@builtin(global_invocation_id) id: vec3u) {}
 
 @compute @workgroup_size(8, 8)
 fn add_source(@builtin(global_invocation_id) id: vec3u) {
-    if mouse.is_down == 1 {
-        let nc = normalized_coords(id.xy);
-        let d = distance(nc, mouse.position);
-        if d < params.mouse_radius {
-            let value = textureLoad(s0, id.xy).r;
-            textureStore(s0, id.xy, vec4f(value + f32(params.mouse_radius - d) / (10.0 * params.mouse_radius), 0.0, 0.0, 0.0));
-        }
+    let nc = normalized_coords(id.xy);
+    let row = u32(nc.y * f32(params.num_tracers));
+    let residue = nc.y * f32(params.num_tracers) - f32(row);
+
+    let source_nc = vec2f(params.tracer_diam, params.tracer_diam * (f32(2 * row) + 1));
+    let d = distance(nc, source_nc);
+    if 2.0 * d < params.tracer_diam {
+        let value = textureLoad(s0, id.xy).r;
+        textureStore(s0, id.xy, vec4f(value + f32(params.tracer_diam - 2.0 * d) / (10.0 * params.tracer_diam), 0.0, 0.0, 0.0));
     }
+
+    // The sources of the tracers are at (tracer_diam, tracer_diam * n)
+    // for integer n \ge 1.
+    // Check whether the current simulation cell
+
+    // if mouse.is_down == 1 {
+    //     let nc = normalized_coords(id.xy);
+    //     let d = distance(nc, mouse.position);
+    //     if d < params.mouse_radius {
+    //         let value = textureLoad(s0, id.xy).r;
+    //         textureStore(s0, id.xy, vec4f(value + f32(params.mouse_radius - d) / (10.0 * params.mouse_radius), 0.0, 0.0, 0.0));
+    //     }
+    // }
 }
 
 @compute @workgroup_size(8, 8)

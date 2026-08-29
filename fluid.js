@@ -77,15 +77,18 @@ async function init() {
   // --- compute stuff ---
 
   let computeParamsBuffer = device.createBuffer({
-    size: 24,
+    size: 32,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
 
-  const computeParams = new ArrayBuffer(24);
+  const computeParams = new ArrayBuffer(32);
   const computeParamsView = new DataView(computeParams);
   computeParamsView.setUint32(0, SIMULATION_WIDTH, true);
   computeParamsView.setUint32(4, SIMULATION_HEIGHT, true);
   computeParamsView.setFloat32(8, MOUSE_RADIUS, true);
+  computeParamsView.setUint32(20, 12, true);
+  computeParamsView.setFloat32(24, 1.0 / (2 * 12), true);
+
   device.queue.writeBuffer(computeParamsBuffer, 0, computeParams);
 
   let bindGroupLayout = device.createBindGroupLayout({
