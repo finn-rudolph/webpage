@@ -1,27 +1,30 @@
-const WIDTH = 256;
-const HEIGHT = 256;
+const SIMULATION_WIDTH = 256;
+const SIMULATION_HEIGHT = 256;
 
-const DT = 0.001;
+const SIMULATION_SPEED = 0.1;
 
-const RADIUS = 10.0; // radius of the mouse force
+const MOUSE_RADIUS = 0.05; // radius of the mouse force
 
 let canvas = document.getElementById("fluidCanvas");
-let mouseDown = false;
-let mousePosition = new Float32Array(2);
+console.log(`canvas.width = ${canvas.width}`);
+console.log(`canvas.height = ${canvas.height}`);
+
+let mouseParams = new ArrayBuffer(16);
+let mouseParamsView = new DataView(mouseParams);
 
 canvas.addEventListener("pointerdown", (event) => {
-  mouseDown = true;
-  mousePosition[0] = event.offsetX;
-  mousePosition[1] = event.offsetY;
+  mouseParamsView.setUint32(0, 1, true);
+  mouseParamsView.setFloat32(8, event.offsetX / canvas.height); // this is correct (normalized coords)
+  mouseParamsView.setFloat32(12, event.offsetY / canvas.height);
 });
 
 canvas.addEventListener("pointerup", () => {
-  mouseDown = false;
+  mouseParamsView.setUint32(0, 0, true);
 });
 
 canvas.addEventListener("pointermove", (event) => {
-  mousePosition[0] = event.offsetX;
-  mousePosition[1] = event.offsetY;
+  mouseParamsView.setFloat32(8, event.offsetX / canvas.height);
+  mouseParamsView.setFloat32(12, event.offsetY / canvas.height);
 });
 
 const canvasContext = canvas.getContext("webgpu");
@@ -44,15 +47,14 @@ async function init() {
   });
 
   const mouseBuffer = device.createBuffer({
-    size: 12,
+    size: 16,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
 
-  const U_BUFFER_SIZE = WIDTH * HEIGHT * 3 * 4;
   let uBuffer = [];
   for (let i = 0; i < 2; ++i) {
     uBuffer[i] = device.createBuffer({
-      size: U_BUFFER_SIZE,
+      size: SIMULATION_WIDTH * SIMULATION_HEIGHT * 8,
       usage: GPUBufferUsage.STORAGE,
     });
   }
@@ -60,7 +62,7 @@ async function init() {
   let sTexture = [];
   for (let i = 0; i < 2; ++i) {
     sTexture[i] = device.createTexture({
-      size: [WIDTH, HEIGHT],
+      size: [SIMULATION_WIDTH, SIMULATION_HEIGHT],
       format: "r32float",
       usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
     });
@@ -70,16 +72,15 @@ async function init() {
   // --- compute stuff ---
 
   let computeParamsBuffer = device.createBuffer({
-    size: 16,
+    size: 24,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
 
-  const computeParams = new ArrayBuffer(16);
+  const computeParams = new ArrayBuffer(24);
   const computeParamsView = new DataView(computeParams);
-  computeParamsView.setUint32(0, WIDTH, true);
-  computeParamsView.setUint32(4, HEIGHT, true);
-  computeParamsView.setFloat32(8, RADIUS, true);
-  computeParamsView.setFloat32(12, DT, true);
+  computeParamsView.setUint32(0, SIMULATION_WIDTH, true);
+  computeParamsView.setUint32(4, SIMULATION_HEIGHT, true);
+  computeParamsView.setFloat32(8, MOUSE_RADIUS, true);
   device.queue.writeBuffer(computeParamsBuffer, 0, computeParams);
 
   let bindGroupLayout = device.createBindGroupLayout({
@@ -92,7 +93,7 @@ async function init() {
       {
         binding: 1,
         visibility: GPUShaderStage.COMPUTE,
-        buffer: { type: "read-only-storage" },
+        buffer: { type: "storage" },
       },
       {
         binding: 2,
@@ -135,11 +136,11 @@ async function init() {
     },
     {
       binding: 1,
-      resource: { buffer: uBuffer[0] },
+      resource: uBuffer[0],
     },
     {
       binding: 2,
-      resource: { buffer: uBuffer[1] },
+      resource: uBuffer[1],
     },
     {
       binding: 3,
@@ -240,12 +241,10 @@ async function init() {
 
   return {
     device: device,
-    bindGroup: computeBindGroup,
+    mouseBuffer: mouseBuffer,
+    computeBindGroup: computeBindGroup,
     computeParamsBuffer: computeParamsBuffer,
     computeParams: computeParams,
-    mouseBuffer: mouseBuffer,
-    uBuffer: uBuffer,
-    sTexture: sTexture,
     renderParamsBuffer: renderParamsBuffer,
     renderParams: renderParams,
     renderBindGroup: renderBindGroup,
@@ -261,7 +260,6 @@ async function init() {
 let last_time = null;
 
 function frame(time, state) {
-  console.log("looping");
   const dt = last_time === null ? 0 : time - last_time;
   last_time = time;
 
@@ -269,10 +267,24 @@ function frame(time, state) {
 
   // --- compute part ---
 
+  state.device.queue.writeBuffer(state.mouseBuffer, 0, mouseParams);
+
+  const computeParamsView = new DataView(state.computeParams);
+  computeParamsView.setFloat32(12, dt * SIMULATION_SPEED, true);
+  computeParamsView.setFloat32(16, canvas.width / canvas.height, true);
+  state.device.queue.writeBuffer(
+    state.computeParamsBuffer,
+    0,
+    state.computeParams,
+  );
+
   const computePassEncoder = commandEncoder.beginComputePass();
 
   computePassEncoder.setPipeline(state.pipelines.source);
-  computePassEncoder.setBindGroup(0, state.bindGroup[state.bindGroupParity]);
+  computePassEncoder.setBindGroup(
+    0,
+    state.computeBindGroup[state.bindGroupParity],
+  );
   computePassEncoder.dispatchWorkgroups(32, 32);
   computePassEncoder.end();
 
@@ -343,4 +355,5 @@ async function debug() {
 
 let state = await init();
 console.log("initialization finished");
+
 requestAnimationFrame((time) => frame(time, state));

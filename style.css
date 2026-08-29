@@ -86,3 +86,8 @@ footer a:hover {
     height: 100%;
     width: 100%;
 }
+
+main canvas {
+    height: 100%;
+    width: 100%;
+}
