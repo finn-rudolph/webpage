@@ -13,18 +13,18 @@ let mouseParams = new ArrayBuffer(16);
 let mouseParamsView = new DataView(mouseParams);
 
 canvas.addEventListener("pointerdown", (event) => {
-  mouseParamsView.setUint32(0, 1, true);
-  mouseParamsView.setFloat32(8, event.offsetX / canvas.height); // this is correct (normalized coords)
-  mouseParamsView.setFloat32(12, event.offsetY / canvas.height);
+  mouseParamsView.setUint32(8, 1, true);
+  mouseParamsView.setFloat32(0, event.offsetX / canvas.clientHeight, true); // this is correct (normalized coords)
+  mouseParamsView.setFloat32(4, event.offsetY / canvas.clientHeight, true);
 });
 
 canvas.addEventListener("pointerup", () => {
-  mouseParamsView.setUint32(0, 0, true);
+  mouseParamsView.setUint32(8, 0, true);
 });
 
 canvas.addEventListener("pointermove", (event) => {
-  mouseParamsView.setFloat32(8, event.offsetX / canvas.height);
-  mouseParamsView.setFloat32(12, event.offsetY / canvas.height);
+  mouseParamsView.setFloat32(0, event.offsetX / canvas.clientHeight, true);
+  mouseParamsView.setFloat32(4, event.offsetY / canvas.clientHeight, true);
 });
 
 const canvasContext = canvas.getContext("webgpu");
@@ -67,7 +67,6 @@ async function init() {
       usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
     });
   }
-  const sView = [sTexture[0].createView(), sTexture[1].createView()];
 
   // --- compute stuff ---
 
@@ -267,6 +266,7 @@ function frame(time, state) {
 
   // --- compute part ---
 
+  console.log(mouseParamsView.getFloat32(4, mouseParams));
   state.device.queue.writeBuffer(state.mouseBuffer, 0, mouseParams);
 
   const computeParamsView = new DataView(state.computeParams);
@@ -332,7 +332,7 @@ function frame(time, state) {
 
   state.device.queue.submit([commandEncoder.finish()]);
 
-  state.bindGroupParity = 1 - state.bindGroupParity;
+  // state.bindGroupParity = 1 - state.bindGroupParity;
   requestAnimationFrame((time) => frame(time, state));
 }
 

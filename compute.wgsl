@@ -6,8 +6,8 @@ struct Params {
 }
 
 struct Mouse {
-    is_down: u32, // just a bool
     position: vec2f, // in normalized coords
+    is_down: u32, // just a bool
 }
 
 @group(0) @binding(0)
@@ -62,7 +62,7 @@ fn project(@builtin(global_invocation_id) id: vec3u) {}
 fn add_source(@builtin(global_invocation_id) id: vec3u) {
     if mouse.is_down == 1 {
         let nc = normalized_coords(id.xy);
-        let d = distance(nc, vec2f(params.aspect_ratio * 0.5, 0.5));
+        let d = distance(nc, mouse.position);
         if d < params.mouse_radius {
             let id_i = vec2i(id.xy);
             let value = textureLoad(s0, id_i).r;
