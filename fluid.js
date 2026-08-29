@@ -1,5 +1,8 @@
-const SIMULATION_WIDTH = 256;
-const SIMULATION_HEIGHT = 256;
+const SIMULATION_WIDTH = 1024;
+const SIMULATION_HEIGHT = 512;
+
+const WG_X = SIMULATION_WIDTH / 8;
+const WG_Y = SIMULATION_HEIGHT / 8;
 
 const SIMULATION_SPEED = 0.1;
 
@@ -64,7 +67,10 @@ async function init() {
     sTexture[i] = device.createTexture({
       size: [SIMULATION_WIDTH, SIMULATION_HEIGHT],
       format: "r32float",
-      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+      usage:
+        GPUTextureUsage.STORAGE_BINDING |
+        GPUTextureUsage.TEXTURE_BINDING |
+        GPUTextureUsage.COPY_SRC,
     });
   }
 
@@ -176,11 +182,19 @@ async function init() {
   });
   const computeModule = device.createShaderModule({ code: computeCode });
 
-  const sourcePipeline = device.createComputePipeline({
+  const addSourcePipeline = device.createComputePipeline({
     layout: computePipelineLayout,
     compute: {
       module: computeModule,
       entryPoint: "add_source",
+    },
+  });
+
+  const transportScalarFieldPipeline = device.createComputePipeline({
+    layout: computePipelineLayout,
+    compute: {
+      module: computeModule,
+      entryPoint: "transport_scalar_field",
     },
   });
 
@@ -250,7 +264,8 @@ async function init() {
     renderPipeline: renderPipeline,
     bindGroupParity: 0,
     pipelines: {
-      source: sourcePipeline,
+      addSource: addSourcePipeline,
+      transportScalarField: transportScalarFieldPipeline,
       render: renderPipeline,
     },
   };
@@ -266,7 +281,6 @@ function frame(time, state) {
 
   // --- compute part ---
 
-  console.log(mouseParamsView.getFloat32(4, mouseParams));
   state.device.queue.writeBuffer(state.mouseBuffer, 0, mouseParams);
 
   const computeParamsView = new DataView(state.computeParams);
@@ -280,12 +294,17 @@ function frame(time, state) {
 
   const computePassEncoder = commandEncoder.beginComputePass();
 
-  computePassEncoder.setPipeline(state.pipelines.source);
+  computePassEncoder.setPipeline(state.pipelines.addSource);
   computePassEncoder.setBindGroup(
     0,
     state.computeBindGroup[state.bindGroupParity],
   );
-  computePassEncoder.dispatchWorkgroups(32, 32);
+  computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
+
+  computePassEncoder.setPipeline(state.pipelines.transportScalarField);
+  computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
+  state.bindGroupParity = 1 - state.bindGroupParity;
+
   computePassEncoder.end();
 
   // --- render part ---
@@ -325,32 +344,42 @@ function frame(time, state) {
   renderPassEncoder.setPipeline(state.renderPipeline);
   renderPassEncoder.setBindGroup(
     0,
-    state.renderBindGroup[state.bindGroupParity], // TODO ensure this is correct
+    state.renderBindGroup[state.bindGroupParity],
   );
   renderPassEncoder.draw(3);
   renderPassEncoder.end();
 
   state.device.queue.submit([commandEncoder.finish()]);
-
-  // state.bindGroupParity = 1 - state.bindGroupParity;
   requestAnimationFrame((time) => frame(time, state));
 }
 
-async function debug() {
-  commandEncoder.copyBufferToBuffer(
-    sBuffer[1],
-    0, // Source offset
-    testBuffer,
-    0, // Destination offset
-    S_BUFFER_SIZE, // Length in bytes
+async function debug_buffer(buffer, length, device) {
+  // encoder.copyBufferToBuffer(texture, 0, buffer, 0, S_BUFFER_SIZE);
+}
+
+async function debug_texture(texture, width, height, device) {
+  let buffer = device.createBuffer({
+    size: width * height * 4,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+
+  const encoder = device.createCommandEncoder();
+
+  encoder.copyTextureToBuffer(
+    { texture: texture },
+    { buffer: buffer, bytesPerRow: width * 4 },
+    { width, height },
   );
 
-  await testBuffer.mapAsync(GPUMapMode.READ, 0, S_BUFFER_SIZE);
+  device.queue.submit([encoder.finish()]);
 
-  const copyArrayBuffer = testBuffer.getMappedRange(0, S_BUFFER_SIZE);
-  const data = copyArrayBuffer.slice();
-  testBuffer.unmap();
-  console.log(new Float32Array(data));
+  await buffer.mapAsync(GPUMapMode.READ, 0);
+
+  const copyArrayBuffer = buffer.getMappedRange(0, width * height * 4);
+  const out = copyArrayBuffer.slice();
+  buffer.unmap();
+  let arr = new Float32Array(out);
+  console.log(arr.every((x) => x === 0));
 }
 
 let state = await init();

@@ -28,6 +28,10 @@ var s1: texture_storage_2d<r32float, read_write>;
 @group(0) @binding(5)
 var<uniform> params: Params;
 
+fn mix2d_f(a00: f32, a01: f32, a10: f32, a11: f32, w: vec2f) -> f32 {
+    return mix(mix(a00, a01, w.y), mix(a10, a11, w.y), w.x);
+}
+
 fn mix2d_v2f(a00: vec2f, a01: vec2f, a10: vec2f, a11: vec2f, w: vec2f) -> vec2f {
     return mix(mix(a00, a01, w.y), mix(a10, a11, w.y), w.x);
 }
@@ -37,8 +41,29 @@ fn mix2d_v2f(a00: vec2f, a01: vec2f, a10: vec2f, a11: vec2f, w: vec2f) -> vec2f 
 // appears as a circle on the screen.
 // Simulation coordinates are the integer coordinates of the simulation grid.
 fn normalized_coords(simulation_coords: vec2u) -> vec2f {
-    let zero_one_coords = vec2f(simulation_coords) / vec2f(params.simulation_size);
+    let zero_one_coords = (vec2f(simulation_coords) + vec2f(0.5, 0.5)) / vec2f(params.simulation_size);
     return vec2f(zero_one_coords.x * params.aspect_ratio, zero_one_coords.y);
+}
+
+fn simulation_coords(normalized_coords: vec2f) -> vec2f {
+    return vec2f(
+        normalized_coords.x * f32(params.simulation_size.x) / params.aspect_ratio,
+        normalized_coords.y * f32(params.simulation_size.y)
+    );
+}
+
+// coords are in [0, params.simulation_size.x/y]
+fn interpolate_2d_f(texture: texture_storage_2d<r32float, read_write>, coords: vec2f) -> f32 {
+    let upper_left = vec2u(coords - vec2f(0.5, 0.5));
+    let mix_weight = coords - vec2f(0.5, 0.5) - vec2f(upper_left);
+
+    return mix2d_f(
+        textureLoad(texture, upper_left).r,
+        textureLoad(texture, upper_left + vec2u(0, 1)).r,
+        textureLoad(texture, upper_left + vec2u(1, 0)).r,
+        textureLoad(texture, upper_left + vec2u(1, 1)).r,
+        mix_weight
+    );
 }
 
 // The old data is always in s0 or u0, respectively. Whether the new data
@@ -64,9 +89,8 @@ fn add_source(@builtin(global_invocation_id) id: vec3u) {
         let nc = normalized_coords(id.xy);
         let d = distance(nc, mouse.position);
         if d < params.mouse_radius {
-            let id_i = vec2i(id.xy);
-            let value = textureLoad(s0, id_i).r;
-            textureStore(s0, id_i, vec4f(value + f32(params.mouse_radius - d) / params.mouse_radius, 0.0, 0.0, 0.0));
+            let value = textureLoad(s0, id.xy).r;
+            textureStore(s0, id.xy, vec4f(value + f32(params.mouse_radius - d) / (10.0 * params.mouse_radius), 0.0, 0.0, 0.0));
         }
     }
 }
@@ -75,9 +99,10 @@ fn add_source(@builtin(global_invocation_id) id: vec3u) {
 fn transport_scalar_field(
     @builtin(global_invocation_id) id: vec3u,
 ) {
-    // let previous_position = trace_particle();
+    let previous_position = simulation_coords(trace_particle(normalized_coords(id.xy)));
+    textureStore(s1, id.xy, vec4f(interpolate_2d_f(s0, previous_position), 0.0, 0.0, 0.0));
 }
 
 fn trace_particle(initial_position: vec2f) -> vec2f {
-    return initial_position - params.dt * vec2f(200.0, 0.0);
+    return initial_position - params.dt * vec2f(0.01, 0.0);
 }
