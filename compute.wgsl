@@ -28,29 +28,23 @@ var s1: texture_storage_2d<r32float, read_write>;
 @group(0) @binding(5)
 var<uniform> params: Params;
 
-@group(0) @binding(20)
-var<storage, read_write> test: array<f32>;
+// The old data is always in s0 or u0, respectively. Whether the new data
+// is in u0/s0 or u1/s1 depends on the function.
 
 @compute @workgroup_size(8, 8)
-fn update_velocity(
+fn add_force(
     @builtin(global_invocation_id) id: vec3u,
 ) {
 }
 
 @compute @workgroup_size(8, 8)
-fn update_scalar_field(
-    @builtin(global_invocation_id) id: vec3u,
-) {
-}
-
-fn add_force(id: vec3u) {
-}
-
-fn add_source(id: vec3u) {
+fn add_source(@builtin(global_invocation_id) id: vec3u) {
     let dx = i32(id.x) - 128;
     let dy = i32(id.y) - 128;
     let dis_squared = dx * dx + dy * dy;
     if dis_squared < 100 {
-        s1[vec2u(id.y, id.x)] = s0[id.y * params.width + id.x] + f32(100 - dis_squared);
+        let p = vec2i(id.xy);
+        let value = textureLoad(s0, p).r;
+        textureStore(s0, p, vec4f(value + f32(100 - dis_squared), 0.0, 0.0, 0.0));
     }
 }

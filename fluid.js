@@ -37,6 +37,12 @@ async function init() {
   const adapter = await navigator.gpu.requestAdapter();
   const device = await adapter.requestDevice();
 
+  canvasContext.configure({
+    device,
+    format: navigator.gpu.getPreferredCanvasFormat(),
+    alphaMode: "premultiplied",
+  });
+
   const mouseBuffer = device.createBuffer({
     size: 12,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -96,12 +102,20 @@ async function init() {
       {
         binding: 3,
         visibility: GPUShaderStage.COMPUTE,
-        buffer: { type: "read-only-storage" },
+        storageTexture: {
+          access: "read-write",
+          format: "r32float",
+          viewDimension: "2d",
+        },
       },
       {
         binding: 4,
         visibility: GPUShaderStage.COMPUTE,
-        buffer: { type: "storage" },
+        storageTexture: {
+          access: "read-write",
+          format: "r32float",
+          viewDimension: "2d",
+        },
       },
       {
         binding: 5,
@@ -129,11 +143,11 @@ async function init() {
     },
     {
       binding: 3,
-      resource: { buffer: sBuffer[0] },
+      resource: sTexture[0],
     },
     {
       binding: 4,
-      resource: { buffer: sBuffer[1] },
+      resource: sTexture[1],
     },
     {
       binding: 5,
@@ -157,32 +171,30 @@ async function init() {
     entries: computeBindGroupEntries,
   });
 
-  const computePipeline = device.createComputePipeline({
-    layout: device.createPipelineLayout({
-      bindGroupLayouts: [bindGroupLayout],
-    }),
+  const computePipelineLayout = device.createPipelineLayout({
+    bindGroupLayouts: [bindGroupLayout],
+  });
+  const computeModule = device.createShaderModule({ code: computeCode });
+
+  const sourcePipeline = device.createComputePipeline({
+    layout: computePipelineLayout,
     compute: {
-      module: device.createShaderModule({ code: computeCode }),
-      entryPoint: "main",
+      module: computeModule,
+      entryPoint: "add_source",
     },
   });
 
   // --- render stuff ---
 
-  const scalarFieldSampler = device.createSampler({
-    magFilter: "linear",
-    minFilter: "linear",
-  });
-
   const renderModule = device.createShaderModule({ code: renderCode });
   const renderPipeline = device.createRenderPipeline({
     vertex: {
       module: renderModule,
-      entryPoint: "vertex_main",
+      entryPoint: "vertex",
     },
     fragment: {
       module: renderModule,
-      entryPoint: "fragment_main",
+      entryPoint: "fragment",
       targets: [
         {
           format: navigator.gpu.getPreferredCanvasFormat(),
@@ -192,17 +204,24 @@ async function init() {
     layout: "auto",
   });
 
+  let renderParamsBuffer = device.createBuffer({
+    size: 8,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+
+  const renderParams = new ArrayBuffer(8);
+  const renderParamsView = new DataView(renderParams);
+  renderParamsView.setUint32(0, canvas.width, true);
+  renderParamsView.setUint32(4, canvas.height, true);
+  device.queue.writeBuffer(renderParamsBuffer, 0, renderParams);
+
   let renderBindGroupEntries = [
     {
       binding: 0,
-      resource: sTexture[1],
+      resource: sTexture[0],
     },
     {
       binding: 1,
-      resource: scalarFieldSampler,
-    },
-    {
-      binding: 2,
       resource: { buffer: renderParamsBuffer },
     },
   ];
@@ -213,7 +232,7 @@ async function init() {
     entries: renderBindGroupEntries,
   });
 
-  renderBindGroupEntries[0].resource = sTexture[0];
+  renderBindGroupEntries[0].resource = sTexture[1];
   renderBindGroup[1] = device.createBindGroup({
     layout: renderPipeline.getBindGroupLayout(0),
     entries: renderBindGroupEntries,
@@ -222,27 +241,51 @@ async function init() {
   return {
     device: device,
     bindGroup: computeBindGroup,
-    paramsBuffer: computeParamsBuffer,
+    computeParamsBuffer: computeParamsBuffer,
+    computeParams: computeParams,
     mouseBuffer: mouseBuffer,
     uBuffer: uBuffer,
     sTexture: sTexture,
-    bufferParity: 0,
+    renderParamsBuffer: renderParamsBuffer,
+    renderParams: renderParams,
+    renderBindGroup: renderBindGroup,
+    renderPipeline: renderPipeline,
+    bindGroupParity: 0,
+    pipelines: {
+      source: sourcePipeline,
+      render: renderPipeline,
+    },
   };
 }
 
-function frame(state) {
-  const commandEncoder = device.createCommandEncoder();
+let last_time = null;
+
+function frame(time, state) {
+  console.log("looping");
+  const dt = last_time === null ? 0 : time - last_time;
+  last_time = time;
+
+  const commandEncoder = state.device.createCommandEncoder();
 
   // --- compute part ---
 
   const computePassEncoder = commandEncoder.beginComputePass();
 
-  computePassEncoder.setPipeline(state.computePipeline);
-  computePassEncoder.setBindGroup(0, bindGroup[state.bufferParity]);
+  computePassEncoder.setPipeline(state.pipelines.source);
+  computePassEncoder.setBindGroup(0, state.bindGroup[state.bindGroupParity]);
   computePassEncoder.dispatchWorkgroups(32, 32);
   computePassEncoder.end();
 
   // --- render part ---
+
+  const renderParamsView = new DataView(state.renderParams);
+  renderParamsView.setUint32(0, canvas.width, true);
+  renderParamsView.setUint32(4, canvas.height, true);
+  state.device.queue.writeBuffer(
+    state.renderParamsBuffer,
+    0,
+    state.renderParams,
+  );
 
   // const msaaTexture = device.createTexture({
   //   size: {
@@ -260,22 +303,25 @@ function frame(state) {
         clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
         loadOp: "clear",
         storeOp: "store",
-        view: msaaTexture.createView(),
-        resolveTarget: context.getCurrentTexture().createView(),
+        view: canvasContext.getCurrentTexture().createView(),
       },
     ],
   };
 
   const renderPassEncoder =
     commandEncoder.beginRenderPass(renderPassDescriptor);
-  renderPassEncoder.setPipeline(pipelineDescriptor);
+  renderPassEncoder.setPipeline(state.renderPipeline);
+  renderPassEncoder.setBindGroup(
+    0,
+    state.renderBindGroup[state.bindGroupParity], // TODO ensure this is correct
+  );
   renderPassEncoder.draw(3);
   renderPassEncoder.end();
 
-  device.queue.submit([commandEncoder.finish()]);
+  state.device.queue.submit([commandEncoder.finish()]);
 
-  state.bufferParity = 1 - state.bufferParity;
-  requestAnimationFrame((state) => frame);
+  state.bindGroupParity = 1 - state.bindGroupParity;
+  requestAnimationFrame((time) => frame(time, state));
 }
 
 async function debug() {
@@ -296,4 +342,5 @@ async function debug() {
 }
 
 let state = await init();
-// requestAnimationFrame((state) => frame);
+console.log("initialization finished");
+requestAnimationFrame((time) => frame(time, state));
