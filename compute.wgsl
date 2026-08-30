@@ -89,6 +89,10 @@ fn interpolate_u0(coords: vec2f) -> vec2f {
 fn add_force(
     @builtin(global_invocation_id) id: vec3u,
 ) {
+    let nc = normalized_coords(id.xy);
+    if nc.x < 2 * params.tracer_diam {
+        u0[id.y * params.simulation_size.x + id.x].r += 2;
+    }
 }
 
 @compute @workgroup_size(8, 8)

@@ -1,93 +1,27 @@
-html {
-    height: 100%;
-}
-
 body {
-    margin: 0;
-    font-family: "Source Code Pro", monospace;
-    font-size: 100%;
+    font-family: "Cormorant", serif;
+    font-size: 1.2rem;
     color: #222;
-    background: #fff;
-    display: flex;
-    flex-direction: column;
-    min-height: 100%;
 }
 
 main {
-    flex: 1;
-}
-
-header {
+    min-height: 100vh;
     display: flex;
-    padding: 1.5rem;
-    font-size: 1.1rem;
-    justify-content: space-between;
-    align-items: flex-start;
-    border-bottom: 0.1rem solid #222;
+    justify-content: center;
+    align-items: center;
 }
 
-.headerlink {
-    text-decoration: none;
+#content {
+    margin: 2rem;
+    max-width: 60rem;
+    z-index: 1;
+}
+
+a {
     color: inherit;
-}
-
-.headerlink:hover {
     text-decoration: underline;
 }
 
-.name {
-    font-weight: 700;
-}
-
-nav {
-    display: flex;
-    gap: 2rem;
-}
-
-footer {
-    border-top: 0.1em solid #222;
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    margin-top: 2rem;
-    padding: 2rem;
-    line-height: 0;
-}
-
-footer a {
-    display: inline-flex;
-    width: 2rem;
-    height: 2rem;
-    color: #444;
-}
-
-footer svg {
-    width: 100%;
-    height: 100%;
-    fill: currentColor;
-}
-
-footer a:hover {
-    color: #000;
-}
-
-.footer-center {
-    justify-self: center;
-    display: flex;
-    gap: 1.5rem;
-}
-
-.footer-right {
-    justify-self: right;
-    width: 2rem;
-    height: 2rem;
-}
-
-.footer-right video {
-    height: 100%;
-    width: 100%;
-}
-
-main canvas {
-    height: 100%;
-    width: 100%;
+#name {
+    margin-bottom: 2rem;
 }
