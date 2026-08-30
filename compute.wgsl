@@ -34,7 +34,7 @@ fn mix2d_f(a00: f32, a01: f32, a10: f32, a11: f32, w: vec2f) -> f32 {
     return mix(mix(a00, a01, w.y), mix(a10, a11, w.y), w.x);
 }
 
-fn mix2d_v2f(a00: vec2f, a01: vec2f, a10: vec2f, a11: vec2f, w: vec2f) -> vec2f {
+fn mix2d_vec2f(a00: vec2f, a01: vec2f, a10: vec2f, a11: vec2f, w: vec2f) -> vec2f {
     return mix(mix(a00, a01, w.y), mix(a10, a11, w.y), w.x);
 }
 
@@ -64,6 +64,20 @@ fn interpolate_2d_f(texture: texture_storage_2d<r32float, read_write>, coords: v
         textureLoad(texture, upper_left + vec2u(0, 1)).r,
         textureLoad(texture, upper_left + vec2u(1, 0)).r,
         textureLoad(texture, upper_left + vec2u(1, 1)).r,
+        mix_weight
+    );
+}
+
+// one cannot pass arrays to functions
+fn interpolate_u0(coords: vec2f) -> vec2f {
+    let upper_left = vec2u(coords - vec2f(0.5, 0.5));
+    let mix_weight = coords - vec2f(0.5, 0.5) - vec2f(upper_left);
+
+    return mix2d_vec2f(
+        u0[upper_left.y * params.simulation_size.x + upper_left.x],
+        u0[(upper_left.y + 1) * params.simulation_size.x + upper_left.x],
+        u0[upper_left.y * params.simulation_size.x + upper_left.x + 1],
+        u0[(upper_left.y + 1) * params.simulation_size.x + upper_left.x + 1],
         mix_weight
     );
 }
@@ -116,10 +130,15 @@ fn add_source(@builtin(global_invocation_id) id: vec3u) {
 fn transport_scalar_field(
     @builtin(global_invocation_id) id: vec3u,
 ) {
-    let previous_position = simulation_coords(trace_particle(normalized_coords(id.xy)));
+    let previous_position = simulation_coords(trace_particle(id.xy));
     textureStore(s1, id.xy, vec4f(interpolate_2d_f(s0, previous_position), 0.0, 0.0, 0.0));
 }
 
-fn trace_particle(initial_position: vec2f) -> vec2f {
-    return initial_position - params.dt * vec2f(0.01, 0.0);
+// traces a particle at `ìnitial_position` backwards through `u0` for time `params.dt`,
+//
+fn trace_particle(initial_position: vec2u) -> vec2f {
+    let k1 = -params.dt * u0[initial_position.y * params.simulation_size.x + initial_position.x];
+    let nc = normalized_coords(initial_position);
+    let k2 = -params.dt * interpolate_u0(nc + 0.5 * k1);
+    return nc + k2;
 }
