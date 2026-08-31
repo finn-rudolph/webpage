@@ -54,32 +54,6 @@ async function init() {
 
   // --- compute stuff ---
 
-  const computeModule = device.createShaderModule({ code: computeCode });
-
-  const addSourcePipeline = device.createComputePipeline({
-    layout: "auto",
-    compute: {
-      module: computeModule,
-      entryPoint: "add_source",
-    },
-  });
-
-  const transportScalarFieldPipeline = device.createComputePipeline({
-    layout: "auto",
-    compute: {
-      module: computeModule,
-      entryPoint: "transport_scalar_field",
-    },
-  });
-
-  const jacobiPressurePipeline = device.createComputePipeline({
-    layout: "auto",
-    compute: {
-      module: computeModule,
-      entryPoint: "jacobi_pressure",
-    },
-  });
-
   // --- params and mouse bind group ---
 
   const mouseBuffer = device.createBuffer({
@@ -249,6 +223,11 @@ async function init() {
     });
   }
 
+  let divBuffer = device.createBuffer({
+    size: SIMULATION_WIDTH * SIMULATION_HEIGHT * 4,
+    usage: GPUBufferUsage.STORAGE,
+  });
+
   let pBGLayout = device.createBindGroupLayout({
     entries: [
       {
@@ -258,6 +237,11 @@ async function init() {
       },
       {
         binding: 1,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: { type: "storage" },
+      },
+      {
+        binding: 2,
         visibility: GPUShaderStage.COMPUTE,
         buffer: { type: "storage" },
       },
@@ -273,6 +257,7 @@ async function init() {
       binding: 1,
       resource: pBuffer[1],
     },
+    { binding: 2, resource: divBuffer },
   ];
 
   let pBindGroups = [];
@@ -285,6 +270,46 @@ async function init() {
   pBindGroups[1] = device.createBindGroup({
     layout: pBGLayout,
     entries: pBGEntries,
+  });
+
+  // --- pipelines ---
+
+  const computeModule = device.createShaderModule({ code: computeCode });
+
+  const layout = device.createPipelineLayout({
+    bindGroupLayouts: [paramsBGLayout, uBGLayout, sBGLayout, pBGLayout],
+  });
+
+  const addForcePipeline = device.createComputePipeline({
+    layout: layout,
+    compute: {
+      module: computeModule,
+      entryPoint: "add_force",
+    },
+  });
+
+  const transportScalarFieldPipeline = device.createComputePipeline({
+    layout: layout,
+    compute: {
+      module: computeModule,
+      entryPoint: "transport_scalar_field",
+    },
+  });
+
+  const jacobiPressurePipeline = device.createComputePipeline({
+    layout: layout,
+    compute: {
+      module: computeModule,
+      entryPoint: "jacobi_pressure",
+    },
+  });
+
+  const addSourcePipeline = device.createComputePipeline({
+    layout: layout,
+    compute: {
+      module: computeModule,
+      entryPoint: "add_source",
+    },
   });
 
   // --- render stuff ---
@@ -351,9 +376,10 @@ async function init() {
       render: renderBindGroups,
     },
     pipelines: {
-      addSource: addSourcePipeline,
+      addForce: addForcePipeline,
       transportScalarField: transportScalarFieldPipeline,
       jacobiPressure: jacobiPressurePipeline,
+      addSource: addSourcePipeline,
       render: renderPipeline,
     },
     parity: {
@@ -394,9 +420,11 @@ function frame(time, state) {
   const computePassEncoder = commandEncoder.beginComputePass();
   computePassEncoder.setBindGroup(0, state.bindGroups.params);
   computePassEncoder.setBindGroup(1, state.bindGroups.u[state.parity.u]);
+  computePassEncoder.setBindGroup(2, state.bindGroups.s[state.parity.s]);
+  computePassEncoder.setBindGroup(3, state.bindGroups.p[state.parity.p]);
 
-  // computePassEncoder.setPipeline(state.pipelines.addForce);
-  // computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
+  computePassEncoder.setPipeline(state.pipelines.addForce);
+  computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
 
   computePassEncoder.setPipeline(state.pipelines.transportScalarField);
   computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
@@ -407,13 +435,12 @@ function frame(time, state) {
   // if a force is currently active.
   for (let i = 0; i < PRESSURE_JACOBI_ITERATIONS; ++i) {
     computePassEncoder.setPipeline(state.pipelines.jacobiPressure);
-    computePassEncoder.setBindGroup(3, state.bindGroups.p[state.parity.p]);
-    state.parity.p ^= 1;
     computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
+    state.parity.p ^= 1;
+    computePassEncoder.setBindGroup(3, state.bindGroups.p[state.parity.p]);
   }
 
   computePassEncoder.setPipeline(state.pipelines.addSource);
-  computePassEncoder.setBindGroup(2, state.bindGroups.s[state.parity.s]);
   computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
 
   computePassEncoder.end();
