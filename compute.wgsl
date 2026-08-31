@@ -5,6 +5,7 @@ struct Params {
     aspect_ratio: f32, // = width / height
     num_tracers: u32,
     tracer_diam: f32,
+    delta_x_squared: f32,
 }
 
 struct Mouse {
@@ -16,19 +17,28 @@ struct Mouse {
 var<uniform> mouse: Mouse;
 
 @group(0) @binding(1)
+var<uniform> params: Params;
+
+@group(1) @binding(0)
 var<storage, read_write> u0: array<vec2f>;
 
-@group(0) @binding(2)
+@group(1) @binding(1)
 var<storage, read_write> u1: array<vec2f>;
 
-@group(0) @binding(3)
+@group(2) @binding(0)
 var s0: texture_storage_2d<r32float, read_write>;
 
-@group(0) @binding(4)
+@group(2) @binding(1)
 var s1: texture_storage_2d<r32float, read_write>;
 
-@group(0) @binding(5)
-var<uniform> params: Params;
+@group(3) @binding(0)
+var<storage, read_write> p0: array<f32>;
+
+@group(3) @binding(1)
+var<storage, read_write> p1: array<f32>;
+
+@group(3) @binding(2)
+var<storage, read_write> u_divergence: array<f32>;
 
 fn mix2d_f(a00: f32, a01: f32, a10: f32, a11: f32, w: vec2f) -> f32 {
     return mix(mix(a00, a01, w.y), mix(a10, a11, w.y), w.x);
@@ -73,13 +83,10 @@ fn interpolate_u0(coords: vec2f) -> vec2f {
     let upper_left = vec2u(coords - vec2f(0.5, 0.5));
     let mix_weight = coords - vec2f(0.5, 0.5) - vec2f(upper_left);
 
-    return mix2d_vec2f(
-        u0[upper_left.y * params.simulation_size.x + upper_left.x],
-        u0[(upper_left.y + 1) * params.simulation_size.x + upper_left.x],
-        u0[upper_left.y * params.simulation_size.x + upper_left.x + 1],
-        u0[(upper_left.y + 1) * params.simulation_size.x + upper_left.x + 1],
-        mix_weight
-    );
+    let i = upper_left.y * params.simulation_size.x + upper_left.x;
+    let width = params.simulation_size.x;
+
+    return mix2d_vec2f(u0[i], u0[i + width], u0[i + 1], u0[i + width + 1], mix_weight);
 }
 
 // The old data is always in s0 or u0, respectively. Whether the new data
@@ -98,10 +105,19 @@ fn add_force(
 @compute @workgroup_size(8, 8)
 fn transport_velocity(
     @builtin(global_invocation_id) id: vec3u,
-) {}
+) {
+    let previous_position = simulation_coords(trace_particle(id.xy));
+    u1[id.y * params.simulation_size.x + id.x] = interpolate_u0(previous_position);
+}
 
 @compute @workgroup_size(8, 8)
-fn project(@builtin(global_invocation_id) id: vec3u) {}
+fn jacobi_pressure(@builtin(global_invocation_id) id: vec3u) {
+    let i = id.y * params.simulation_size.x + id.x;
+    let width = params.simulation_size.x;
+
+    p1[i] = 0.25 * (p0[i + width] + p0[i + 1] + p0[i - width] + p0[i - 1]
+        - params.delta_x_squared * u_divergence[i]);
+}
 
 @compute @workgroup_size(8, 8)
 fn add_source(@builtin(global_invocation_id) id: vec3u) {
@@ -138,8 +154,8 @@ fn transport_scalar_field(
     textureStore(s1, id.xy, vec4f(interpolate_2d_f(s0, previous_position), 0.0, 0.0, 0.0));
 }
 
-// traces a particle at `ìnitial_position` backwards through `u0` for time `params.dt`,
-//
+// traces a particle at `ìnitial_position` backwards through `u0` for time `params.dt`
+// and returns the position in normalized coords
 fn trace_particle(initial_position: vec2u) -> vec2f {
     let k1 = -params.dt * u0[initial_position.y * params.simulation_size.x + initial_position.x];
     let nc = normalized_coords(initial_position);
