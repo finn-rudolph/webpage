@@ -62,11 +62,11 @@ async function init() {
   });
 
   let computeParamsBuffer = device.createBuffer({
-    size: 32,
+    size: 64,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
 
-  const computeParams = new ArrayBuffer(32);
+  const computeParams = new ArrayBuffer(64);
   const computeParamsView = new DataView(computeParams);
   computeParamsView.setUint32(0, SIMULATION_WIDTH, true);
   computeParamsView.setUint32(4, SIMULATION_HEIGHT, true);
@@ -111,7 +111,7 @@ async function init() {
   for (let i = 0; i < 2; ++i) {
     uBuffer[i] = device.createBuffer({
       size: SIMULATION_WIDTH * SIMULATION_HEIGHT * 8,
-      usage: GPUBufferUsage.STORAGE,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
   }
 
@@ -288,11 +288,19 @@ async function init() {
     },
   });
 
-  const transportScalarFieldPipeline = device.createComputePipeline({
+  const transportVelocityPipeline = device.createComputePipeline({
     layout: layout,
     compute: {
       module: computeModule,
-      entryPoint: "transport_scalar_field",
+      entryPoint: "transport_velocity",
+    },
+  });
+
+  const divergencePipeline = device.createComputePipeline({
+    layout: layout,
+    compute: {
+      module: computeModule,
+      entryPoint: "divergence",
     },
   });
 
@@ -309,6 +317,14 @@ async function init() {
     compute: {
       module: computeModule,
       entryPoint: "add_source",
+    },
+  });
+
+  const transportScalarFieldPipeline = device.createComputePipeline({
+    layout: layout,
+    compute: {
+      module: computeModule,
+      entryPoint: "transport_scalar_field",
     },
   });
 
@@ -377,9 +393,11 @@ async function init() {
     },
     pipelines: {
       addForce: addForcePipeline,
-      transportScalarField: transportScalarFieldPipeline,
+      transportVelocity: transportVelocityPipeline,
+      divergence: divergencePipeline,
       jacobiPressure: jacobiPressurePipeline,
       addSource: addSourcePipeline,
+      transportScalarField: transportScalarFieldPipeline,
       render: renderPipeline,
     },
     parity: {
@@ -394,14 +412,20 @@ async function init() {
     renderParamsBuffer: renderParamsBuffer,
     renderParams: renderParams,
     renderParamsView: renderParamsView,
+    data: {
+      u: uBuffer,
+      s: sTexture,
+    },
   };
 }
 
 let last_time = null;
+let cnt = 0;
 
 function frame(time, state) {
   const dt = last_time === null ? 0 : time - last_time;
   last_time = time;
+  cnt++;
 
   const commandEncoder = state.device.createCommandEncoder();
 
@@ -426,10 +450,13 @@ function frame(time, state) {
   computePassEncoder.setPipeline(state.pipelines.addForce);
   computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
 
-  computePassEncoder.setPipeline(state.pipelines.transportScalarField);
+  computePassEncoder.setPipeline(state.pipelines.transportVelocity);
   computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
   state.parity.u ^= 1;
   computePassEncoder.setBindGroup(1, state.bindGroups.u[state.parity.u]);
+
+  computePassEncoder.setPipeline(state.pipelines.divergence);
+  computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
 
   // We "warm-start" from the previous pressure. One could consider doing more iterations
   // if a force is currently active.
@@ -442,6 +469,11 @@ function frame(time, state) {
 
   computePassEncoder.setPipeline(state.pipelines.addSource);
   computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
+
+  computePassEncoder.setPipeline(state.pipelines.transportScalarField);
+  computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
+  state.parity.s ^= 1;
+  computePassEncoder.setBindGroup(2, state.bindGroups.s[state.parity.s]);
 
   computePassEncoder.end();
 
@@ -484,14 +516,40 @@ function frame(time, state) {
   renderPassEncoder.end();
 
   state.device.queue.submit([commandEncoder.finish()]);
+
+  if (cnt % 40 == 0) {
+    debug_buffer(
+      state.data.u[0],
+      SIMULATION_WIDTH * SIMULATION_HEIGHT * 8,
+      state.device,
+    );
+  }
+
   requestAnimationFrame((time) => frame(time, state));
 }
 
-async function debug_buffer(buffer, length, device) {
-  // encoder.copyBufferToBuffer(texture, 0, buffer, 0, S_BUFFER_SIZE);
+async function debug_buffer(input, size, device) {
+  let buffer = device.createBuffer({
+    size: size,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+
+  const encoder = device.createCommandEncoder();
+
+  encoder.copyBufferToBuffer(input, buffer);
+
+  device.queue.submit([encoder.finish()]);
+
+  await buffer.mapAsync(GPUMapMode.READ, 0);
+
+  const copyArrayBuffer = buffer.getMappedRange(0, size);
+  const out = copyArrayBuffer.slice();
+  buffer.unmap();
+  let arr = new Float32Array(out);
+  console.log(arr);
 }
 
-async function debug_texture(texture, width, height, device) {
+async function debug_texture(input, width, height, device) {
   let buffer = device.createBuffer({
     size: width * height * 4,
     usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
@@ -500,7 +558,7 @@ async function debug_texture(texture, width, height, device) {
   const encoder = device.createCommandEncoder();
 
   encoder.copyTextureToBuffer(
-    { texture: texture },
+    { texture: input },
     { buffer: buffer, bytesPerRow: width * 4 },
     { width, height },
   );
@@ -513,7 +571,7 @@ async function debug_texture(texture, width, height, device) {
   const out = copyArrayBuffer.slice();
   buffer.unmap();
   let arr = new Float32Array(out);
-  console.log(arr.every((x) => x === 0));
+  console.log(arr);
 }
 
 let state = await init();

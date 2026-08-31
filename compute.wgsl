@@ -1,12 +1,14 @@
 struct Params {
-    simulation_size: vec2u, // number of simulation cells in each axis (points for which we store a velocity etc.)
-    mouse_radius: f32, // in normalized coords
-    dt: f32,
-    aspect_ratio: f32, // = width / height
-    num_tracers: u32,
-    tracer_diam: f32,
-    delta_x_squared: f32,
+    simulation_size: vec2u, // 0
+    mouse_radius: f32, // 8
+    dt: f32, // 12
+    aspect_ratio: f32, // 16
+    num_tracers: u32, // 20
+    tracer_diam: f32, // 24
+    delta_x_squared: f32, // 28
 }
+
+// simulation_size = number of simulation cells in each axis (points for which we store a velocity etc.)
 
 struct Mouse {
     position: vec2f, // in normalized coords
@@ -96,7 +98,7 @@ fn interpolate_u0(coords: vec2f) -> vec2f {
 fn add_force(
     @builtin(global_invocation_id) id: vec3u,
 ) {
-    u0[id.y * params.simulation_size.x + id.x] += 1;
+    u0[id.y * params.simulation_size.x + id.x].x += 0.0001;
 }
 
 @compute @workgroup_size(8, 8)
@@ -108,10 +110,19 @@ fn transport_velocity(
 }
 
 @compute @workgroup_size(8, 8)
+fn divergence(@builtin(global_invocation_id) id: vec3u) {
+    let width = params.simulation_size.x;
+    let i = id.y * width + id.x;
+    u_divergence[i] = 0.5 * ((u0[i + 1].x - u0[i - 1].x) * f32(params.simulation_size.x) * params.aspect_ratio
+        + (u0[i + width].y - u0[i - width].y) * f32(params.simulation_size.y));
+}
+
+@compute @workgroup_size(8, 8)
 fn jacobi_pressure(@builtin(global_invocation_id) id: vec3u) {
     let i = id.y * params.simulation_size.x + id.x;
     let width = params.simulation_size.x;
 
+    // TODO: account for different aspect ratios.
     p1[i] = 0.25 * (p0[i + width] + p0[i + 1] + p0[i - width] + p0[i - 1]
         - params.delta_x_squared * u_divergence[i]);
 }
