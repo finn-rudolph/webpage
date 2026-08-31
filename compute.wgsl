@@ -34,6 +34,10 @@ var<uniform> params: Params;
 @group(0) @binding(2)
 var<uniform> c: CoordinateConstants;
 
+// All buffers for grid data are padded by 1 in x and y direction to handle
+// boundary conditions. When simulation grid coordinates are passed around,
+// they are 0-based, however. We only add the +1 when we really access data.
+
 @group(1) @binding(0)
 var<storage, read_write> u0: array<vec2f>;
 
@@ -81,8 +85,8 @@ fn simulation_coords(normalized_coords: vec2f) -> vec2f {
 
 // coords are in [0, params.simulation_size.x/y]
 fn interpolate_2d_f(texture: texture_storage_2d<r32float, read_write>, coords: vec2f) -> f32 {
-    let upper_left = vec2u(coords - vec2f(0.5, 0.5));
-    let mix_weight = coords - vec2f(0.5, 0.5) - vec2f(upper_left);
+    let upper_left = vec2u(coords + vec2f(0.5, 0.5)); // actually it is -(0.5, 0.5), but there is a boundary
+    let mix_weight = coords + vec2f(0.5, 0.5) - vec2f(upper_left);
 
     return mix2d_f(
         textureLoad(texture, upper_left).r,
@@ -95,10 +99,10 @@ fn interpolate_2d_f(texture: texture_storage_2d<r32float, read_write>, coords: v
 
 // one cannot pass arrays to functions
 fn interpolate_u0(coords: vec2f) -> vec2f {
-    let upper_left = vec2u(coords - vec2f(0.5, 0.5));
-    let mix_weight = coords - vec2f(0.5, 0.5) - vec2f(upper_left);
+    let upper_left = vec2u(coords + vec2f(0.5, 0.5));
+    let mix_weight = coords + vec2f(0.5, 0.5) - vec2f(upper_left);
 
-    let width = params.simulation_size.x;
+    let width = params.simulation_size.x + 2;
     let i = upper_left.y * width + upper_left.x;
 
     return mix2d_vec2f(u0[i], u0[i + width], u0[i + 1], u0[i + width + 1], mix_weight);
@@ -111,13 +115,11 @@ fn interpolate_u0(coords: vec2f) -> vec2f {
 fn add_force(
     @builtin(global_invocation_id) id: vec3u,
 ) {
-    // u0[id.y * params.simulation_size.x + id.x].x += 0.000001;
-
     if mouse.is_down == 1 {
         let nc = normalized_coords(id.xy);
         let d = distance(nc, mouse.position);
         if d < params.mouse_radius {
-            let i = id.y * params.simulation_size.x + id.x;
+            let i = (id.y + 1) * (params.simulation_size.x + 2) + id.x + 1;
             u0[i] += (f32(params.mouse_radius - d) / (10.0 * params.mouse_radius)) * mouse.displacement;
         }
     }
@@ -128,21 +130,21 @@ fn transport_velocity(
     @builtin(global_invocation_id) id: vec3u,
 ) {
     let previous_position = simulation_coords(trace_particle(id.xy));
-    u1[id.y * params.simulation_size.x + id.x] = interpolate_u0(previous_position);
+    u1[(id.y + 1) * (params.simulation_size.x + 2) + id.x + 1] = interpolate_u0(previous_position);
 }
 
 @compute @workgroup_size(8, 8)
 fn divergence(@builtin(global_invocation_id) id: vec3u) {
-    let width = params.simulation_size.x;
-    let i = id.y * width + id.x;
+    let width = params.simulation_size.x + 2;
+    let i = (id.y + 1) * width + id.x + 1;
     u_divergence[i] = ((u0[i + 1].x - u0[i - 1].x) * c.half_r_delta_x
         + (u0[i + width].y - u0[i - width].y) * c.half_r_delta_y);
 }
 
 @compute @workgroup_size(8, 8)
 fn jacobi_pressure(@builtin(global_invocation_id) id: vec3u) {
-    let width = params.simulation_size.x;
-    let i = id.y * width + id.x;
+    let width = params.simulation_size.x + 2;
+    let i = (id.y + 1) * width + id.x + 1;
 
     p1[i] = -c.half_r_sum_r_sq_delta_x_r_sq_delta_y * u_divergence[i]
     + c.half_div_sq_delta_y_sum_sq_delta_x_sq_delta_y * (p0[i + 1] + p0[i - 1])
@@ -151,8 +153,8 @@ fn jacobi_pressure(@builtin(global_invocation_id) id: vec3u) {
 
 @compute @workgroup_size(8, 8)
 fn sub_pressure_gradient(@builtin(global_invocation_id) id: vec3u) {
-    let width = params.simulation_size.x;
-    let i = id.y * width + id.x;
+    let width = params.simulation_size.x + 2;
+    let i = (id.y + 1) * width + id.x + 1;
 
     let del_x = (p0[i + 1] - p0[i - 1]) * c.half_r_delta_x;
     let del_y = (p0[i + width] - p0[i - width]) * c.half_r_delta_y;
@@ -180,8 +182,10 @@ fn add_source(@builtin(global_invocation_id) id: vec3u) {
         let nc = normalized_coords(id.xy);
         let d = distance(nc, mouse.position);
         if d < params.mouse_radius {
-            let value = textureLoad(s0, id.xy).r;
-            textureStore(s0, id.xy, vec4f(value + f32(params.mouse_radius - d) / (10.0 * params.mouse_radius), 0.0, 0.0, 0.0));
+            let pos_with_boundary = id.xy + vec2u(1, 1);
+            let value = textureLoad(s0, pos_with_boundary).r;
+            textureStore(s0, pos_with_boundary,
+                vec4f(value + f32(params.mouse_radius - d) / (10.0 * params.mouse_radius), 0.0, 0.0, 0.0));
         }
     }
 }
@@ -191,7 +195,7 @@ fn transport_scalar_field(
     @builtin(global_invocation_id) id: vec3u,
 ) {
     let previous_position = simulation_coords(trace_particle(id.xy));
-    textureStore(s1, id.xy, vec4f(interpolate_2d_f(s0, previous_position), 0.0, 0.0, 0.0));
+    textureStore(s1, id.xy + vec2u(1, 1), vec4f(interpolate_2d_f(s0, previous_position), 0.0, 0.0, 0.0));
 }
 
 // TODO: if it lands outside, return the boundary coordinate.
@@ -199,7 +203,7 @@ fn transport_scalar_field(
 // and returns the position in normalized coords
 // `initial_position` must be in simulation grid coordinates.
 fn trace_particle(initial_position: vec2u) -> vec2f {
-    let k1 = -params.dt * u0[initial_position.y * params.simulation_size.x + initial_position.x];
+    let k1 = -params.dt * u0[(initial_position.y + 1) * (params.simulation_size.x + 2) + initial_position.x + 1];
     let nc = normalized_coords(initial_position);
     let k2 = -params.dt * interpolate_u0(simulation_coords(nc + 0.5 * k1));
     return nc + k2;

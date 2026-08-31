@@ -173,7 +173,7 @@ async function init() {
   let sTexture = [];
   for (let i = 0; i < 2; ++i) {
     sTexture[i] = device.createTexture({
-      size: [SIMULATION_WIDTH, SIMULATION_HEIGHT],
+      size: [SIMULATION_WIDTH + 2, SIMULATION_HEIGHT + 2],
       format: "r32float",
       usage:
         GPUTextureUsage.STORAGE_BINDING |
@@ -233,13 +233,13 @@ async function init() {
   let pBuffer = [];
   for (let i = 0; i < 2; ++i) {
     pBuffer[i] = device.createBuffer({
-      size: SIMULATION_WIDTH * SIMULATION_HEIGHT * 4,
+      size: (SIMULATION_WIDTH + 2) * (SIMULATION_HEIGHT + 2) * 4,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
   }
 
   let divBuffer = device.createBuffer({
-    size: SIMULATION_WIDTH * SIMULATION_HEIGHT * 4,
+    size: (SIMULATION_WIDTH + 2) * (SIMULATION_HEIGHT + 2) * 4,
     usage: GPUBufferUsage.STORAGE,
   });
 
@@ -534,8 +534,8 @@ function frame(time, state) {
     computePassEncoder.setBindGroup(3, state.bindGroups.p[state.parity.p]);
   }
 
-  // computePassEncoder.setPipeline(state.pipelines.subPressureGradient);
-  // computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
+  computePassEncoder.setPipeline(state.pipelines.subPressureGradient);
+  computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
 
   computePassEncoder.setPipeline(state.pipelines.addSource);
   computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);

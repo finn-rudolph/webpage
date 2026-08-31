@@ -20,8 +20,8 @@ fn simulation_coords(pixel_coords: vec2f) -> vec2f {
 // `coords` are simulation grid coords. They need not be integral, that's why
 // we interpolate.
 fn interpolate_2d_f(texture: texture_2d<f32>, coords: vec2f) -> f32 {
-    let upper_left = vec2u(coords - vec2f(0.5, 0.5));
-    let mix_weight = coords - vec2f(upper_left) - vec2f(0.5, 0.5);
+    let upper_left = vec2u(coords + vec2f(0.5, 0.5)); // due to boundary it's "+"
+    let mix_weight = coords - vec2f(upper_left) + vec2f(0.5, 0.5);
 
     return mix2d_f(
         textureLoad(texture, upper_left, 0).r,
