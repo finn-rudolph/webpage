@@ -62,19 +62,23 @@ async function init() {
   });
 
   let computeParamsBuffer = device.createBuffer({
-    size: 64,
+    size: 16,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
 
-  const computeParams = new ArrayBuffer(64);
+  const computeParams = new ArrayBuffer(16);
   const computeParamsView = new DataView(computeParams);
   computeParamsView.setUint32(0, SIMULATION_WIDTH, true);
   computeParamsView.setUint32(4, SIMULATION_HEIGHT, true);
   computeParamsView.setFloat32(8, MOUSE_RADIUS, true);
-  computeParamsView.setUint32(20, 12, true);
-  computeParamsView.setFloat32(24, 1.0 / (2 * 12), true);
 
   device.queue.writeBuffer(computeParamsBuffer, 0, computeParams);
+
+  const coordConstantsBuffer = device.createBuffer({
+    size: 32,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+  const coordConstants = new Float32Array(8);
 
   let paramsBGLayout = device.createBindGroupLayout({
     entries: [
@@ -85,6 +89,11 @@ async function init() {
       },
       {
         binding: 1,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: { type: "uniform" },
+      },
+      {
+        binding: 2,
         visibility: GPUShaderStage.COMPUTE,
         buffer: { type: "uniform" },
       },
@@ -101,6 +110,10 @@ async function init() {
       {
         binding: 1,
         resource: { buffer: computeParamsBuffer },
+      },
+      {
+        binding: 2,
+        resource: { buffer: coordConstantsBuffer },
       },
     ],
   });
@@ -219,7 +232,7 @@ async function init() {
   for (let i = 0; i < 2; ++i) {
     pBuffer[i] = device.createBuffer({
       size: SIMULATION_WIDTH * SIMULATION_HEIGHT * 4,
-      usage: GPUBufferUsage.STORAGE,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
   }
 
@@ -312,6 +325,14 @@ async function init() {
     },
   });
 
+  const subPressureGradientPipeline = device.createComputePipeline({
+    layout: layout,
+    compute: {
+      module: computeModule,
+      entryPoint: "sub_pressure_gradient",
+    },
+  });
+
   const addSourcePipeline = device.createComputePipeline({
     layout: layout,
     compute: {
@@ -396,6 +417,7 @@ async function init() {
       transportVelocity: transportVelocityPipeline,
       divergence: divergencePipeline,
       jacobiPressure: jacobiPressurePipeline,
+      subPressureGradient: subPressureGradientPipeline,
       addSource: addSourcePipeline,
       transportScalarField: transportScalarFieldPipeline,
       render: renderPipeline,
@@ -409,12 +431,15 @@ async function init() {
     computeParamsBuffer: computeParamsBuffer,
     computeParams: computeParams,
     computeParamsView: computeParamsView,
+    coordConstantsBuffer: coordConstantsBuffer,
+    coordConstants: coordConstants,
     renderParamsBuffer: renderParamsBuffer,
     renderParams: renderParams,
     renderParamsView: renderParamsView,
     data: {
       u: uBuffer,
       s: sTexture,
+      p: pBuffer,
     },
   };
 }
@@ -427,6 +452,10 @@ function frame(time, state) {
   last_time = time;
   cnt++;
 
+  const dpr = window.devicePixelRatio;
+  canvas.width = Math.round(canvas.clientWidth * dpr);
+  canvas.height = Math.round(canvas.clientHeight * dpr);
+
   const commandEncoder = state.device.createCommandEncoder();
 
   // --- compute part ---
@@ -434,11 +463,33 @@ function frame(time, state) {
   state.device.queue.writeBuffer(state.mouseBuffer, 0, mouseParams);
 
   state.computeParamsView.setFloat32(12, dt * SIMULATION_SPEED, true);
-  state.computeParamsView.setFloat32(16, canvas.width / canvas.height, true);
   state.device.queue.writeBuffer(
     state.computeParamsBuffer,
     0,
     state.computeParams,
+  );
+
+  const aspect_ratio = canvas.clientWidth / canvas.clientHeight;
+  const r_delta_x = SIMULATION_WIDTH / aspect_ratio;
+  const r_delta_y = SIMULATION_HEIGHT;
+  const sq_delta_x = 1 / (r_delta_x * r_delta_x);
+  const sq_delta_y = 1 / (r_delta_y * r_delta_y);
+  // console.log(aspect_ratio);
+  // console.log(r_delta_x);
+  // console.log(r_delta_y);
+  state.coordConstants[0] = aspect_ratio;
+  state.coordConstants[1] =
+    1 / (2 * (r_delta_x * r_delta_x + r_delta_y * r_delta_y));
+  state.coordConstants[2] = sq_delta_y / (2 * (sq_delta_x + sq_delta_y));
+  state.coordConstants[3] = sq_delta_x / (2 * (sq_delta_x + sq_delta_y));
+  state.coordConstants[4] = r_delta_x;
+  state.coordConstants[5] = r_delta_y;
+  state.coordConstants[6] = 0.5 * r_delta_x;
+  state.coordConstants[7] = 0.5 * r_delta_y;
+  state.device.queue.writeBuffer(
+    state.coordConstantsBuffer,
+    0,
+    state.coordConstants,
   );
 
   const computePassEncoder = commandEncoder.beginComputePass();
@@ -447,8 +498,10 @@ function frame(time, state) {
   computePassEncoder.setBindGroup(2, state.bindGroups.s[state.parity.s]);
   computePassEncoder.setBindGroup(3, state.bindGroups.p[state.parity.p]);
 
-  computePassEncoder.setPipeline(state.pipelines.addForce);
-  computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
+  if (cnt < 50) {
+    computePassEncoder.setPipeline(state.pipelines.addForce);
+    computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
+  }
 
   computePassEncoder.setPipeline(state.pipelines.transportVelocity);
   computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
@@ -466,6 +519,9 @@ function frame(time, state) {
     state.parity.p ^= 1;
     computePassEncoder.setBindGroup(3, state.bindGroups.p[state.parity.p]);
   }
+
+  // computePassEncoder.setPipeline(state.pipelines.subPressureGradient);
+  // computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
 
   computePassEncoder.setPipeline(state.pipelines.addSource);
   computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
@@ -518,11 +574,11 @@ function frame(time, state) {
   state.device.queue.submit([commandEncoder.finish()]);
 
   if (cnt % 40 == 0) {
-    debug_buffer(
-      state.data.u[0],
-      SIMULATION_WIDTH * SIMULATION_HEIGHT * 8,
-      state.device,
-    );
+    // debug_buffer(
+    //   state.data.p[state.parity.p],
+    //   SIMULATION_WIDTH * SIMULATION_HEIGHT * 4,
+    //   state.device,
+    // );
   }
 
   requestAnimationFrame((time) => frame(time, state));
@@ -547,6 +603,7 @@ async function debug_buffer(input, size, device) {
   buffer.unmap();
   let arr = new Float32Array(out);
   console.log(arr);
+  // console.log(arr.every((x) => x === 0));
 }
 
 async function debug_texture(input, width, height, device) {
