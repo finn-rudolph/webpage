@@ -15,19 +15,21 @@ let canvas = document.getElementById("fluidCanvas");
 console.log(`canvas.width = ${canvas.width}`);
 console.log(`canvas.height = ${canvas.height}`);
 
-let mouseParams = new ArrayBuffer(16);
+let mouseParams = new ArrayBuffer(24);
 let mouseParamsView = new DataView(mouseParams);
 
 canvas.addEventListener("pointerdown", (event) => {
-  mouseParamsView.setUint32(8, 1, true);
+  mouseParamsView.setUint32(16, 1, true);
   mouseParamsView.setFloat32(0, event.offsetX / canvas.clientHeight, true); // this is correct (normalized coords)
   mouseParamsView.setFloat32(4, event.offsetY / canvas.clientHeight, true);
 });
 
 canvas.addEventListener("pointerup", () => {
-  mouseParamsView.setUint32(8, 0, true);
+  mouseParamsView.setUint32(16, 0, true);
 });
 
+// TODO: if the simulation feels laggy, store an array of movements and apply forces
+// along the path.
 canvas.addEventListener("pointermove", (event) => {
   mouseParamsView.setFloat32(0, event.offsetX / canvas.clientHeight, true);
   mouseParamsView.setFloat32(4, event.offsetY / canvas.clientHeight, true);
@@ -57,7 +59,7 @@ async function init() {
   // --- params and mouse bind group ---
 
   const mouseBuffer = device.createBuffer({
-    size: 16,
+    size: 24,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
 
@@ -123,7 +125,7 @@ async function init() {
   let uBuffer = [];
   for (let i = 0; i < 2; ++i) {
     uBuffer[i] = device.createBuffer({
-      size: SIMULATION_WIDTH * SIMULATION_HEIGHT * 8,
+      size: (SIMULATION_WIDTH + 2) * (SIMULATION_HEIGHT + 2) * 8,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
   }
@@ -445,12 +447,31 @@ async function init() {
 }
 
 let last_time = null;
+let last_mouse_pos = [0, 0];
 let cnt = 0;
 
 function frame(time, state) {
   const dt = last_time === null ? 0 : time - last_time;
   last_time = time;
+
   cnt++;
+
+  // console.log((mouseParamsView.getFloat32(0, true) - last_mouse_pos[0]) / dt);
+  mouseParamsView.setFloat32(
+    8,
+    (mouseParamsView.getFloat32(0, true) - last_mouse_pos[0]) / dt,
+    true,
+  );
+  mouseParamsView.setFloat32(
+    12,
+    (mouseParamsView.getFloat32(4, true) - last_mouse_pos[1]) / dt,
+    true,
+  );
+  last_mouse_pos = [
+    mouseParamsView.getFloat32(0, true),
+    mouseParamsView.getFloat32(4, true),
+  ];
+  state.device.queue.writeBuffer(state.mouseBuffer, 0, mouseParams);
 
   const dpr = window.devicePixelRatio;
   canvas.width = Math.round(canvas.clientWidth * dpr);
@@ -459,8 +480,6 @@ function frame(time, state) {
   const commandEncoder = state.device.createCommandEncoder();
 
   // --- compute part ---
-
-  state.device.queue.writeBuffer(state.mouseBuffer, 0, mouseParams);
 
   state.computeParamsView.setFloat32(12, dt * SIMULATION_SPEED, true);
   state.device.queue.writeBuffer(
@@ -474,9 +493,6 @@ function frame(time, state) {
   const r_delta_y = SIMULATION_HEIGHT;
   const sq_delta_x = 1 / (r_delta_x * r_delta_x);
   const sq_delta_y = 1 / (r_delta_y * r_delta_y);
-  // console.log(aspect_ratio);
-  // console.log(r_delta_x);
-  // console.log(r_delta_y);
   state.coordConstants[0] = aspect_ratio;
   state.coordConstants[1] =
     1 / (2 * (r_delta_x * r_delta_x + r_delta_y * r_delta_y));
@@ -498,10 +514,8 @@ function frame(time, state) {
   computePassEncoder.setBindGroup(2, state.bindGroups.s[state.parity.s]);
   computePassEncoder.setBindGroup(3, state.bindGroups.p[state.parity.p]);
 
-  if (cnt < 50) {
-    computePassEncoder.setPipeline(state.pipelines.addForce);
-    computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
-  }
+  computePassEncoder.setPipeline(state.pipelines.addForce);
+  computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
 
   computePassEncoder.setPipeline(state.pipelines.transportVelocity);
   computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
@@ -573,10 +587,10 @@ function frame(time, state) {
 
   state.device.queue.submit([commandEncoder.finish()]);
 
-  if (cnt % 40 == 0) {
+  if (cnt % 41 == 0) {
     // debug_buffer(
-    //   state.data.p[state.parity.p],
-    //   SIMULATION_WIDTH * SIMULATION_HEIGHT * 4,
+    //   state.data.u[state.parity.u],
+    //   (SIMULATION_WIDTH + 2) * (SIMULATION_HEIGHT + 2) * 8,
     //   state.device,
     // );
   }
@@ -602,8 +616,12 @@ async function debug_buffer(input, size, device) {
   const out = copyArrayBuffer.slice();
   buffer.unmap();
   let arr = new Float32Array(out);
-  console.log(arr);
-  // console.log(arr.every((x) => x === 0));
+  // console.log(arr);
+  console.log(arr.every((x) => x === 0));
+  console.log(
+    arr[SIMULATION_HEIGHT * SIMULATION_WIDTH],
+    arr[SIMULATION_HEIGHT * SIMULATION_WIDTH + 1],
+  );
 }
 
 async function debug_texture(input, width, height, device) {

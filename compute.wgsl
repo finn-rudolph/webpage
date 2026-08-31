@@ -21,6 +21,7 @@ struct CoordinateConstants {
 
 struct Mouse {
     position: vec2f, // in normalized coords
+    displacement: vec2f, // already scaled by dt
     is_down: u32, // just a bool
 }
 
@@ -97,8 +98,8 @@ fn interpolate_u0(coords: vec2f) -> vec2f {
     let upper_left = vec2u(coords - vec2f(0.5, 0.5));
     let mix_weight = coords - vec2f(0.5, 0.5) - vec2f(upper_left);
 
-    let i = upper_left.y * params.simulation_size.x + upper_left.x;
     let width = params.simulation_size.x;
+    let i = upper_left.y * width + upper_left.x;
 
     return mix2d_vec2f(u0[i], u0[i + width], u0[i + 1], u0[i + width + 1], mix_weight);
 }
@@ -110,7 +111,16 @@ fn interpolate_u0(coords: vec2f) -> vec2f {
 fn add_force(
     @builtin(global_invocation_id) id: vec3u,
 ) {
-    u0[id.y * params.simulation_size.x + id.x].x += 0.000001;
+    // u0[id.y * params.simulation_size.x + id.x].x += 0.000001;
+
+    if mouse.is_down == 1 {
+        let nc = normalized_coords(id.xy);
+        let d = distance(nc, mouse.position);
+        if d < params.mouse_radius {
+            let i = id.y * params.simulation_size.x + id.x;
+            u0[i] += (f32(params.mouse_radius - d) / (10.0 * params.mouse_radius)) * mouse.displacement;
+        }
+    }
 }
 
 @compute @workgroup_size(8, 8)
@@ -184,11 +194,13 @@ fn transport_scalar_field(
     textureStore(s1, id.xy, vec4f(interpolate_2d_f(s0, previous_position), 0.0, 0.0, 0.0));
 }
 
+// TODO: if it lands outside, return the boundary coordinate.
 // traces a particle at `ìnitial_position` backwards through `u0` for time `params.dt`
 // and returns the position in normalized coords
+// `initial_position` must be in simulation grid coordinates.
 fn trace_particle(initial_position: vec2u) -> vec2f {
     let k1 = -params.dt * u0[initial_position.y * params.simulation_size.x + initial_position.x];
     let nc = normalized_coords(initial_position);
-    let k2 = -params.dt * interpolate_u0(nc + 0.5 * k1);
+    let k2 = -params.dt * interpolate_u0(simulation_coords(nc + 0.5 * k1));
     return nc + k2;
 }
