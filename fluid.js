@@ -1,10 +1,10 @@
 const SIMULATION_WIDTH = 1024;
-const SIMULATION_HEIGHT = 512;
+const SIMULATION_HEIGHT = 1024;
 
 const WG_X = SIMULATION_WIDTH / 8;
 const WG_Y = SIMULATION_HEIGHT / 8;
 
-const SIMULATION_SPEED = 0.1;
+const SIMULATION_SPEED = 0.05;
 
 const MOUSE_RADIUS = 0.05; // radius of the mouse force
 
@@ -422,6 +422,7 @@ let last_time = null;
 let last_mouse_pos = [0, 0];
 let cnt = 0;
 
+// TODO: if the timestep is too large, just reset the simulation.
 function frame(time, state) {
   const dt = last_time === null ? 0 : time - last_time;
   last_time = time;

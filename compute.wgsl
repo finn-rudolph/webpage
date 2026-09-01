@@ -120,7 +120,7 @@ fn add_force(
         let d = distance(nc, mouse.position);
         if d < params.mouse_radius {
             let i = (id.y + 1) * (params.simulation_size.x + 2) + id.x + 1;
-            u0[i] += (f32(params.mouse_radius - d) / params.mouse_radius) * mouse.displacement;
+            u0[i] += 10.0 * (f32(params.mouse_radius - d) / params.mouse_radius) * mouse.displacement;
         }
     }
 }
@@ -239,23 +239,31 @@ fn transport_scalar_field(
 // the nearest boundary coordinate is returned.
 // `initial_position` must be in simulation grid coordinates.
 fn trace_particle(initial_position: vec2u) -> vec2f {
-    // TODO the midpoint may be outside
-    let k1 = -params.dt * u0[(initial_position.y + 1) * (params.simulation_size.x + 2) + initial_position.x + 1];
-    let nc = normalized_coords(initial_position);
-    let k2 = -params.dt * interpolate_u0(simulation_coords(nc + 0.5 * k1));
-    var result = nc + k2;
-    if result.x < 0 {
-        result.x *= -1;
-    }
-    if result.x > c.aspect_ratio {
-        result.x = 2 * c.aspect_ratio - result.x;
-    }
-    if result.y < 0 {
-        result.y *= -1;
-    }
-    if result.y > 1.0 {
-        result.y = 2.0 - result.y;
-    }
-    return result;
-    // max(vec2f(0.0, 0.0), min(vec2f(c.aspect_ratio, 1.0), nc + k2));
+    // adaptive second-order Runge-Kutta
+
+    var current_position = normalized_coords(initial_position);
+    var dt = params.dt;
+    // while dt > 0.0 {
+    let k1 = -dt * u0[(initial_position.y + 1) * (params.simulation_size.x + 2) + initial_position.x + 1];
+    let euler_step = current_position - k1;
+
+    var overshoot_frac = 0.0;
+    if euler_step.x < 0 { overshoot_frac = -euler_step.x / k1.x; }
+        else if euler_step.x > c.aspect_ratio { overshoot_frac = (euler_step.x - c.aspect_ratio) / k1.x; }
+    if euler_step.y < 0 { overshoot_frac = max(overshoot_frac, -euler_step.y / k1.y); }
+        else if euler_step.y > 1.0 { overshoot_frac = max(overshoot_frac, (1.0 - euler_step.y) / k1.y); }
+
+    let effective_dt = dt * (1.0 - overshoot_frac);
+    let k2 = -effective_dt * interpolate_u0(simulation_coords(current_position + 0.5 * (1.0 - overshoot_frac) * k1));
+    current_position = max(vec2f(0.0, 0.0), min(vec2f(c.aspect_ratio, 1.0), current_position + k2));
+    dt -= effective_dt;
+    // }
+
+    return current_position;
+
+    // second-order Runge-Kutta
+
+    // // TODO the midpoint may be outside
+    // let nc = normalized_coords(initial_position);
+    // return max(vec2f(0.0, 0.0), min(vec2f(c.aspect_ratio, 1.0), nc + k2));
 }
