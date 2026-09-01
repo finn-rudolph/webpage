@@ -1,14 +1,14 @@
 const SIMULATION_WIDTH = 1024;
-const SIMULATION_HEIGHT = 1024;
+const SIMULATION_HEIGHT = 512;
 
 const WG_X = SIMULATION_WIDTH / 8;
 const WG_Y = SIMULATION_HEIGHT / 8;
 
-const SIMULATION_SPEED = 0.05;
+const SIMULATION_SPEED = 0.2;
 
 const MOUSE_RADIUS = 0.05; // radius of the mouse force
 
-const PRESSURE_JACOBI_ITERATIONS = 40;
+const PRESSURE_JACOBI_ITERATIONS = 60;
 const VISCOSITY_JACOBI_ITERATIONS = 40;
 
 let canvas = document.getElementById("fluidCanvas");
