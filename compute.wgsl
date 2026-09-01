@@ -120,7 +120,7 @@ fn add_force(
         let d = distance(nc, mouse.position);
         if d < params.mouse_radius {
             let i = (id.y + 1) * (params.simulation_size.x + 2) + id.x + 1;
-            u0[i] += (f32(params.mouse_radius - d) / (10.0 * params.mouse_radius)) * mouse.displacement;
+            u0[i] += (f32(params.mouse_radius - d) / params.mouse_radius) * mouse.displacement;
         }
     }
 }
@@ -161,6 +161,42 @@ fn sub_pressure_gradient(@builtin(global_invocation_id) id: vec3u) {
     u0[i] -= vec2f(del_x, del_y);
 }
 
+@compute @workgroup_size(64)
+fn pressure_boundary_h(@builtin(global_invocation_id) id: vec3u) {
+    let width = params.simulation_size.x + 2;
+    let top_i = id.x + 1;
+    p0[top_i] = p0[top_i + width];
+    let bottom_i = top_i + (params.simulation_size.y + 1) * width;
+    p0[bottom_i] = p0[bottom_i - width];
+}
+
+@compute @workgroup_size(64)
+fn pressure_boundary_v(@builtin(global_invocation_id) id: vec3u) {
+    let width = params.simulation_size.x + 2;
+    let left_i = (id.x + 1) * width;
+    p0[left_i] = p0[left_i + 1];
+    let right_i = left_i + width - 1;
+    p0[right_i] = p0[right_i - 1];
+}
+
+@compute @workgroup_size(64)
+fn velocity_boundary_h(@builtin(global_invocation_id) id: vec3u) {
+    let width = params.simulation_size.x + 2;
+    let top_i = id.x + 1;
+    u0[top_i] = -u0[top_i + width];
+    let bottom_i = top_i + (params.simulation_size.y + 1) * width;
+    u0[bottom_i] = -u0[bottom_i - width];
+}
+
+@compute @workgroup_size(64)
+fn velocity_boundary_v(@builtin(global_invocation_id) id: vec3u) {
+    let width = params.simulation_size.x + 2;
+    let left_i = (id.x + 1) * width;
+    u0[left_i] = -u0[left_i + 1];
+    let right_i = left_i + width - 1;
+    u0[right_i] = -u0[right_i - 1];
+}
+
 @compute @workgroup_size(8, 8)
 fn add_source(@builtin(global_invocation_id) id: vec3u) {
     // let nc = normalized_coords(id.xy);
@@ -198,13 +234,28 @@ fn transport_scalar_field(
     textureStore(s1, id.xy + vec2u(1, 1), vec4f(interpolate_2d_f(s0, previous_position), 0.0, 0.0, 0.0));
 }
 
-// TODO: if it lands outside, return the boundary coordinate.
 // traces a particle at `ìnitial_position` backwards through `u0` for time `params.dt`
-// and returns the position in normalized coords
+// and returns the position in normalized coords. If the trace happens to exit the simulation grid,
+// the nearest boundary coordinate is returned.
 // `initial_position` must be in simulation grid coordinates.
 fn trace_particle(initial_position: vec2u) -> vec2f {
+    // TODO the midpoint may be outside
     let k1 = -params.dt * u0[(initial_position.y + 1) * (params.simulation_size.x + 2) + initial_position.x + 1];
     let nc = normalized_coords(initial_position);
     let k2 = -params.dt * interpolate_u0(simulation_coords(nc + 0.5 * k1));
-    return nc + k2;
+    var result = nc + k2;
+    if result.x < 0 {
+        result.x *= -1;
+    }
+    if result.x > c.aspect_ratio {
+        result.x = 2 * c.aspect_ratio - result.x;
+    }
+    if result.y < 0 {
+        result.y *= -1;
+    }
+    if result.y > 1.0 {
+        result.y = 2.0 - result.y;
+    }
+    return result;
+    // max(vec2f(0.0, 0.0), min(vec2f(c.aspect_ratio, 1.0), nc + k2));
 }

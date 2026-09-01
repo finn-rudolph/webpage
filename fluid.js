@@ -8,8 +8,8 @@ const SIMULATION_SPEED = 0.1;
 
 const MOUSE_RADIUS = 0.05; // radius of the mouse force
 
-const PRESSURE_JACOBI_ITERATIONS = 20;
-const VISCOSITY_JACOBI_ITERATIONS = 20;
+const PRESSURE_JACOBI_ITERATIONS = 40;
+const VISCOSITY_JACOBI_ITERATIONS = 40;
 
 let canvas = document.getElementById("fluidCanvas");
 console.log(`canvas.width = ${canvas.width}`);
@@ -295,61 +295,23 @@ async function init() {
     bindGroupLayouts: [paramsBGLayout, uBGLayout, sBGLayout, pBGLayout],
   });
 
-  const addForcePipeline = device.createComputePipeline({
-    layout: layout,
-    compute: {
-      module: computeModule,
-      entryPoint: "add_force",
-    },
-  });
+  const pipeline = (entryPoint) => {
+    return device.createComputePipeline({
+      layout: layout,
+      compute: {
+        module: computeModule,
+        entryPoint: entryPoint,
+      },
+    });
+  };
 
-  const transportVelocityPipeline = device.createComputePipeline({
-    layout: layout,
-    compute: {
-      module: computeModule,
-      entryPoint: "transport_velocity",
-    },
-  });
-
-  const divergencePipeline = device.createComputePipeline({
-    layout: layout,
-    compute: {
-      module: computeModule,
-      entryPoint: "divergence",
-    },
-  });
-
-  const jacobiPressurePipeline = device.createComputePipeline({
-    layout: layout,
-    compute: {
-      module: computeModule,
-      entryPoint: "jacobi_pressure",
-    },
-  });
-
-  const subPressureGradientPipeline = device.createComputePipeline({
-    layout: layout,
-    compute: {
-      module: computeModule,
-      entryPoint: "sub_pressure_gradient",
-    },
-  });
-
-  const addSourcePipeline = device.createComputePipeline({
-    layout: layout,
-    compute: {
-      module: computeModule,
-      entryPoint: "add_source",
-    },
-  });
-
-  const transportScalarFieldPipeline = device.createComputePipeline({
-    layout: layout,
-    compute: {
-      module: computeModule,
-      entryPoint: "transport_scalar_field",
-    },
-  });
+  const addForcePipeline = pipeline("add_force");
+  const transportVelocityPipeline = pipeline("transport_velocity");
+  const divergencePipeline = pipeline("divergence");
+  const jacobiPressurePipeline = pipeline("jacobi_pressure");
+  const subPressureGradientPipeline = pipeline("sub_pressure_gradient");
+  const addSourcePipeline = pipeline("add_source");
+  const transportScalarFieldPipeline = pipeline("transport_scalar_field");
 
   // --- render stuff ---
 
@@ -423,6 +385,16 @@ async function init() {
       addSource: addSourcePipeline,
       transportScalarField: transportScalarFieldPipeline,
       render: renderPipeline,
+      boundary: {
+        velocity: {
+          h: pipeline("velocity_boundary_h"),
+          v: pipeline("velocity_boundary_v"),
+        },
+        pressure: {
+          h: pipeline("pressure_boundary_h"),
+          v: pipeline("pressure_boundary_v"),
+        },
+      },
     },
     parity: {
       u: 0, // whether the current data lives in u0 or u1
@@ -514,26 +486,37 @@ function frame(time, state) {
   computePassEncoder.setBindGroup(2, state.bindGroups.s[state.parity.s]);
   computePassEncoder.setBindGroup(3, state.bindGroups.p[state.parity.p]);
 
+  const set_boundary = (qty_name) => {
+    computePassEncoder.setPipeline(state.pipelines.boundary[qty_name].h);
+    computePassEncoder.dispatchWorkgroups(SIMULATION_WIDTH / 64);
+    computePassEncoder.setPipeline(state.pipelines.boundary[qty_name].v);
+    computePassEncoder.dispatchWorkgroups(SIMULATION_HEIGHT / 64);
+  };
+
   computePassEncoder.setPipeline(state.pipelines.addForce);
   computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
 
+  set_boundary("velocity");
   computePassEncoder.setPipeline(state.pipelines.transportVelocity);
   computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
   state.parity.u ^= 1;
   computePassEncoder.setBindGroup(1, state.bindGroups.u[state.parity.u]);
 
+  set_boundary("velocity");
   computePassEncoder.setPipeline(state.pipelines.divergence);
   computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
 
   // We "warm-start" from the previous pressure. One could consider doing more iterations
   // if a force is currently active.
   for (let i = 0; i < PRESSURE_JACOBI_ITERATIONS; ++i) {
+    set_boundary("pressure");
     computePassEncoder.setPipeline(state.pipelines.jacobiPressure);
     computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
     state.parity.p ^= 1;
     computePassEncoder.setBindGroup(3, state.bindGroups.p[state.parity.p]);
   }
 
+  set_boundary("pressure");
   computePassEncoder.setPipeline(state.pipelines.subPressureGradient);
   computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
 
