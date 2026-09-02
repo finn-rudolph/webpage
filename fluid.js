@@ -472,7 +472,7 @@ function frame(time, state) {
 
   // --- compute part ---
 
-  state.computeParamsView.setFloat16(12, dt * SIMULATION_SPEED);
+  state.computeParamsView.setFloat32(12, dt * SIMULATION_SPEED);
   state.device.queue.writeBuffer(
     state.computeParamsBuffer,
     0,
@@ -487,23 +487,25 @@ function frame(time, state) {
   state.coordConstantsView.setFloat32(0, aspect_ratio, true);
   state.coordConstantsView.setFloat32(4, r_delta_x, true);
   state.coordConstantsView.setFloat32(8, r_delta_y, true);
-  state.coordConstantsView.setFloat16(
+  state.coordConstantsView.setFloat32(
     12,
     1 / (2 * (r_delta_x * r_delta_x + r_delta_y * r_delta_y)),
     true,
   );
-  state.coordConstantsView.setFloat16(
-    14,
+  state.coordConstantsView.setFloat32(
+    16,
     sq_delta_y / (2 * (sq_delta_x + sq_delta_y)),
     true,
   );
-  state.coordConstantsView.setFloat16(
-    16,
+  state.coordConstantsView.setFloat32(
+    20,
     sq_delta_x / (2 * (sq_delta_x + sq_delta_y)),
     true,
   );
-  state.coordConstantsView.setFloat16(18, 0.5 * r_delta_x, true);
-  state.coordConstantsView.setFloat16(20, 0.5 * r_delta_y, true);
+  state.coordConstantsView.setFloat32(24, 0.5 * r_delta_x, true);
+  state.coordConstantsView.setFloat32(28, 0.5 * r_delta_y, true);
+  // console.log(sq_delta_y / (2 * (sq_delta_x + sq_delta_y)));
+  // state.coordConstantsView.getFloat16(14, true);
   state.device.queue.writeBuffer(
     state.coordConstantsBuffer,
     0,
@@ -525,6 +527,12 @@ function frame(time, state) {
 
   computePassEncoder.setPipeline(state.pipelines.addForce);
   computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
+
+  // debug_buffer(
+  //   state.data.u[1],
+  //   (SIMULATION_WIDTH + 2) * (SIMULATION_HEIGHT + 2) * 2,
+  //   state.device,
+  // );
 
   set_boundary("velocity");
   computePassEncoder.setPipeline(state.pipelines.transportVelocity);
