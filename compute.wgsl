@@ -1,39 +1,41 @@
-struct Params {
+// say we solve L(f) = g. the constants are for a jacobi iteration of the form
+//          f^(k + 1)_ij = rhs * g_ij
+//                         + x * (f^k_(i+1,j) + f^k_(i-1,j))
+//                         + y * (f^k_(i,j+1) + f^k_(i,j-1))
+struct JacobiConstants {
+    rhs: f32,
+    x: f32,
+    y: f32,
+    _pad: f32,
+}
+
+struct Constants {
     simulation_size: vec2u,
-    mouse_radius: f32,
+    buffer_size: vec2u,
+    j_pressure: JacobiConstants,                    // 16
+    j_diffusion: JacobiConstants,                   // 32
+    r_delta: vec2f, // 1 / delta_x                     48
+    half_r_delta: vec2f, // 1 / (2 * delta_x)
+    aspect_ratio: f32,                              // 64
+    viscosity: f32,                                 // 68
+    dissipation_rate: f32,                          // 72
     dt: f32,
-    dissipation_rate: f32,
 }
 
 // simulation_size = number of simulation cells in each axis (points for which we store a velocity etc.)
-
-struct CoordinateConstants {
-    aspect_ratio: f32,
-    half_r_sum_r_sq_delta_x_r_sq_delta_y: f32, // 1 / (2 * (1 / delta_x^2 + 1 / delta_y^2))
-    half_div_sq_delta_y_sum_sq_delta_x_sq_delta_y: f32, // delta_y^2 / (2 * (delta_x^2 + delta_y^2))
-    half_div_sq_delta_x_sum_sq_delta_x_sq_delta_y: f32, // delta_x^2 / (2 * (delta_x^2 + delta_y^2))
-    r_delta_x: f32, // 1 / delta_x
-    r_delta_y: f32, // 1 / delta_y
-    half_r_delta_x: f32, // 1 / (2 * delta_x)
-    half_r_delta_y: f32, // 1 / (2 * delta_y)
-}
-
-// half_r_delta_x = 1/(2 * delta_x) = simulation_size.x / (2 * aspect_ratio)
 
 struct Mouse {
     position: vec2f, // in normalized coords
     displacement: vec2f, // already scaled by dt
     is_down: u32, // just a bool
+    radius: f32,
 }
 
 @group(0) @binding(0)
 var<uniform> mouse: Mouse;
 
 @group(0) @binding(1)
-var<uniform> params: Params;
-
-@group(0) @binding(2)
-var<uniform> c: CoordinateConstants;
+var<uniform> c: Constants;
 
 // All buffers for grid data are padded by 1 in x and y direction to handle
 // boundary conditions. When simulation grid coordinates are passed around,
@@ -77,36 +79,37 @@ fn mix2d_vec4f(a00: vec4f, a01: vec4f, a10: vec4f, a11: vec4f, w: vec2f) -> vec4
 // appears as a circle on the screen.
 // Simulation coordinates are the integer coordinates of the simulation grid.
 fn normalized_coords(simulation_coords: vec2u) -> vec2f {
-    let zero_one_coords = (vec2f(simulation_coords) + vec2f(0.5, 0.5)) / vec2f(params.simulation_size);
+    let zero_one_coords = (vec2f(simulation_coords) + vec2f(0.5, 0.5)) / vec2f(c.simulation_size);
     return vec2f(zero_one_coords.x * c.aspect_ratio, zero_one_coords.y);
 }
 
 fn simulation_coords(normalized_coords: vec2f) -> vec2f {
     return vec2f(
-        normalized_coords.x * c.r_delta_x,
-        normalized_coords.y * c.r_delta_y,
+        normalized_coords.x * c.r_delta.x,
+        normalized_coords.y * c.r_delta.y,
     );
 }
 
+// the simulation_coords are 0-based
+fn buffer_index(simulation_coords: vec2u) -> u32 {
+    return (simulation_coords.y + 1) * c.buffer_size.x + (simulation_coords.x + 1);
+}
+
 fn interpolate_s0(coords: vec2f) -> vec4f {
-    let upper_left = vec2u(coords + vec2f(0.5, 0.5));
-    let mix_weight = coords + vec2f(0.5, 0.5) - vec2f(upper_left);
+    let upper_left = vec2u(coords - vec2f(0.5, 0.5));
+    let mix_weight = coords - vec2f(0.5, 0.5) - vec2f(upper_left);
 
-    let width = params.simulation_size.x + 2;
-    let i = upper_left.y * width + upper_left.x;
-
-    return mix2d_vec4f(s0[i], s0[i + width], s0[i + 1], s0[i + width + 1], mix_weight);
+    let i = buffer_index(upper_left);
+    return mix2d_vec4f(s0[i], s0[i + c.buffer_size.x], s0[i + 1], s0[i + c.buffer_size.x + 1], mix_weight);
 }
 
 // one cannot pass arrays to functions
 fn interpolate_u0(coords: vec2f) -> vec2f {
-    let upper_left = vec2u(coords + vec2f(0.5, 0.5));
-    let mix_weight = coords + vec2f(0.5, 0.5) - vec2f(upper_left);
+    let upper_left = vec2u(coords - vec2f(0.5, 0.5));
+    let mix_weight = coords - vec2f(0.5, 0.5) - vec2f(upper_left);
 
-    let width = params.simulation_size.x + 2;
-    let i = upper_left.y * width + upper_left.x;
-
-    return mix2d_vec2f(u0[i], u0[i + width], u0[i + 1], u0[i + width + 1], mix_weight);
+    let i = buffer_index(upper_left);
+    return mix2d_vec2f(u0[i], u0[i + c.buffer_size.x], u0[i + 1], u0[i + c.buffer_size.x + 1], mix_weight);
 }
 
 // The old data is always in s0 or u0, respectively. Whether the new data
@@ -119,9 +122,8 @@ fn add_force(
     if mouse.is_down == 1 {
         let nc = normalized_coords(id.xy);
         let d = distance(nc, mouse.position);
-        if d < params.mouse_radius {
-            let i = (id.y + 1) * (params.simulation_size.x + 2) + id.x + 1;
-            u0[i] += (f32(params.mouse_radius - d) / params.mouse_radius) * mouse.displacement;
+        if d < mouse.radius {
+            u0[buffer_index(id.xy)] += (f32(mouse.radius - d) / mouse.radius) * mouse.displacement / (10.0 * c.dt);
         }
     }
 }
@@ -131,81 +133,83 @@ fn transport_velocity(
     @builtin(global_invocation_id) id: vec3u,
 ) {
     let previous_position = simulation_coords(trace_particle(id.xy));
-    u1[(id.y + 1) * (params.simulation_size.x + 2) + id.x + 1] = interpolate_u0(previous_position);
+    u1[buffer_index(id.xy)] = interpolate_u0(previous_position);
 }
 
 @compute @workgroup_size(8, 8)
 fn divergence(@builtin(global_invocation_id) id: vec3u) {
-    let width = params.simulation_size.x + 2;
-    let i = (id.y + 1) * width + id.x + 1;
-    u_divergence[i] = ((u0[i + 1].x - u0[i - 1].x) * c.half_r_delta_x
-        + (u0[i + width].y - u0[i - width].y) * c.half_r_delta_y);
+    let i = buffer_index(id.xy);
+    u_divergence[i] = ((u0[i + 1].x - u0[i - 1].x) * c.half_r_delta.x
+        + (u0[i + c.buffer_size.x].y - u0[i - c.buffer_size.x].y) * c.half_r_delta.y);
 }
 
 @compute @workgroup_size(8, 8)
 fn jacobi_pressure(@builtin(global_invocation_id) id: vec3u) {
-    let width = params.simulation_size.x + 2;
-    let i = (id.y + 1) * width + id.x + 1;
+    let i = buffer_index(id.xy);
 
-    p1[i] = -c.half_r_sum_r_sq_delta_x_r_sq_delta_y * u_divergence[i]
-    + c.half_div_sq_delta_y_sum_sq_delta_x_sq_delta_y * (p0[i + 1] + p0[i - 1])
-    + c.half_div_sq_delta_x_sum_sq_delta_x_sq_delta_y * (p0[i + width] + p0[i - width]);
+    p1[i] = c.j_pressure.rhs * u_divergence[i]
+    + c.j_pressure.x * (p0[i + 1] + p0[i - 1])
+    + c.j_pressure.y * (p0[i + c.buffer_size.x] + p0[i - c.buffer_size.x]);
+}
+
+@compute @workgroup_size(8, 8)
+fn jacobi_diffuse(@builtin(global_invocation_id) id: vec3u) {
+    let i = buffer_index(id.xy);
+
+    u1[i] = c.j_diffusion.rhs * u0[i]
+    + c.j_diffusion.x * (u0[i + 1] + u0[i - 1])
+    + c.j_diffusion.y * (u0[i + c.buffer_size.x] + u0[i - c.buffer_size.x]);
 }
 
 @compute @workgroup_size(8, 8)
 fn sub_pressure_gradient(@builtin(global_invocation_id) id: vec3u) {
-    let width = params.simulation_size.x + 2;
-    let i = (id.y + 1) * width + id.x + 1;
-
-    let del_x = (p0[i + 1] - p0[i - 1]) * c.half_r_delta_x;
-    let del_y = (p0[i + width] - p0[i - width]) * c.half_r_delta_y;
+    let i = buffer_index(id.xy);
+    let del_x = (p0[i + 1] - p0[i - 1]) * c.half_r_delta.x;
+    let del_y = (p0[i + c.buffer_size.x] - p0[i - c.buffer_size.x]) * c.half_r_delta.y;
     u0[i] -= vec2f(del_x, del_y);
 }
 
 @compute @workgroup_size(64)
 fn pressure_boundary_h(@builtin(global_invocation_id) id: vec3u) {
-    let width = params.simulation_size.x + 2;
     let top_i = id.x + 1;
-    p0[top_i] = p0[top_i + width];
-    let bottom_i = top_i + (params.simulation_size.y + 1) * width;
-    p0[bottom_i] = p0[bottom_i - width];
+    p0[top_i] = p0[top_i + c.buffer_size.x];
+    let bottom_i = top_i + (c.simulation_size.y + 1) * c.buffer_size.x;
+    p0[bottom_i] = p0[bottom_i - c.buffer_size.x];
 }
 
 @compute @workgroup_size(64)
 fn pressure_boundary_v(@builtin(global_invocation_id) id: vec3u) {
-    let width = params.simulation_size.x + 2;
-    let left_i = (id.x + 1) * width;
+    let left_i = (id.x + 1) * c.buffer_size.x;
     p0[left_i] = p0[left_i + 1];
-    let right_i = left_i + width - 1;
+    let right_i = left_i + c.buffer_size.x - 1;
     p0[right_i] = p0[right_i - 1];
 }
 
 @compute @workgroup_size(64)
 fn velocity_boundary_h(@builtin(global_invocation_id) id: vec3u) {
-    let width = params.simulation_size.x + 2;
     let top_i = id.x + 1;
-    u0[top_i] = -u0[top_i + width];
-    let bottom_i = top_i + (params.simulation_size.y + 1) * width;
-    u0[bottom_i] = -u0[bottom_i - width];
+    u0[top_i] = -u0[top_i + c.buffer_size.x];
+    let bottom_i = top_i + (c.simulation_size.y + 1) * c.buffer_size.x;
+    u0[bottom_i] = -u0[bottom_i - c.buffer_size.x];
 }
 
 @compute @workgroup_size(64)
 fn velocity_boundary_v(@builtin(global_invocation_id) id: vec3u) {
-    let width = params.simulation_size.x + 2;
-    let left_i = (id.x + 1) * width;
+    let left_i = (id.x + 1) * c.buffer_size.x;
     u0[left_i] = -u0[left_i + 1];
-    let right_i = left_i + width - 1;
+    let right_i = left_i + c.buffer_size.x - 1;
     u0[right_i] = -u0[right_i - 1];
 }
 
 @compute @workgroup_size(8, 8)
 fn add_source(@builtin(global_invocation_id) id: vec3u) {
+    // TODO: account for spacing between cells, so that the total amount of dye is
+    // independent of the screen and simulation
     if mouse.is_down == 1 {
         let nc = normalized_coords(id.xy);
         let d = distance(nc, mouse.position);
-        if d < params.mouse_radius {
-            let i = (id.y + 1) * (params.simulation_size.x + 2) + id.x + 1;
-            s0[i] -= vec4f(0.5, 0.0, 0.2, 0.0) * (params.mouse_radius - d) / (10.0 * params.mouse_radius);
+        if d < mouse.radius {
+            s0[buffer_index(id.xy)] -= vec4f(0.5, 0.0, 0.2, 0.0) * (mouse.radius - d) / (10.0 * mouse.radius);
         }
     }
 }
@@ -215,7 +219,7 @@ fn transport_scalar_field(
     @builtin(global_invocation_id) id: vec3u,
 ) {
     let previous_position = simulation_coords(trace_particle(id.xy));
-    s1[(id.y + 1) * (params.simulation_size.x + 2) + id.x + 1] = interpolate_s0(previous_position);
+    s1[buffer_index(id.xy)] = interpolate_s0(previous_position);
 }
 
 // traces a particle at `ìnitial_position` backwards through `u0` for time `params.dt`
@@ -255,18 +259,14 @@ fn trace_particle(initial_position: vec2u) -> vec2f {
     // second-order Runge-Kutta
 
     let nc = normalized_coords(initial_position);
-    let k1 = -params.dt * u0[(initial_position.y + 1) * (params.simulation_size.x + 2) + initial_position.x + 1];
-    let k2 = -params.dt * interpolate_u0(simulation_coords(nc + 0.5 * k1));
+    let k1 = -c.dt * u0[buffer_index(initial_position)];
+    let k2 = -c.dt * interpolate_u0(simulation_coords(nc + 0.5 * k1));
     return max(vec2f(0.0, 0.0), min(vec2f(c.aspect_ratio, 1.0), nc + k2));
 }
 
 @compute @workgroup_size(8, 8)
-fn diffuse_velocity() {
-}
-
-@compute @workgroup_size(8, 8)
 fn init_dye(@builtin(global_invocation_id) id: vec3u) {
-    let i = (id.y + 1) * (params.simulation_size.x + 2) + id.x + 1;
+    let i = buffer_index(id.xy);
     s0[i].r = 1.0;
     s0[i].g = 1.0;
     s0[i].b = 1.0;
@@ -275,8 +275,8 @@ fn init_dye(@builtin(global_invocation_id) id: vec3u) {
 
 @compute @workgroup_size(8, 8)
 fn dissipate(@builtin(global_invocation_id) id: vec3u) {
-    let i = (id.y + 1) * (params.simulation_size.x + 2) + id.x + 1;
-    s0[i].r += (1.0 - s0[i].r) * params.dissipation_rate;
-    s0[i].g += (1.0 - s0[i].g) * params.dissipation_rate;
-    s0[i].b += (1.0 - s0[i].b) * params.dissipation_rate;
+    let i = buffer_index(id.xy);
+    s0[i].r += (1.0 - s0[i].r) * c.dissipation_rate;
+    s0[i].g += (1.0 - s0[i].g) * c.dissipation_rate;
+    s0[i].b += (1.0 - s0[i].b) * c.dissipation_rate;
 }

@@ -1,34 +1,37 @@
-const SIM_WIDTH = 1024;
-const SIM_HEIGHT = 1024;
+const simulation_width = 512;
+const simulation_height = 512;
 
-const WG_X = SIM_WIDTH / 8;
-const WG_Y = SIM_HEIGHT / 8;
-const WORKGROUPS = [SIM_WIDTH / 8, SIM_HEIGHT / 8];
+const num_workgroups = [simulation_width / 8, simulation_height / 8];
+const jacobi_iterations = 30;
 
-const MOUSE_RADIUS = 0.05; // radius of the mouse force
+const mouse_radius = 0.05; // radius of the mouse force
+
+const viscosity = 0.01;
+const dissipation_rate = 0.001;
+const time_scale = 0.1; // the physical time step is `time_scale` * [browser time step in ms]
 
 let canvas = document.getElementById("fluidCanvas");
 console.log(`canvas.width = ${canvas.width}`);
 console.log(`canvas.height = ${canvas.height}`);
 
 let mouseParams = new ArrayBuffer(24);
-let mouseParamsView = new DataView(mouseParams);
+let mouseView = new DataView(mouseParams);
 
 canvas.addEventListener("pointerdown", (event) => {
-  mouseParamsView.setUint32(16, 1, true);
-  mouseParamsView.setFloat32(0, event.offsetX / canvas.clientHeight, true); // this is correct (normalized coords)
-  mouseParamsView.setFloat32(4, event.offsetY / canvas.clientHeight, true);
+  mouseView.setUint32(16, 1, true);
+  mouseView.setFloat32(0, event.offsetX / canvas.clientHeight, true); // this is correct (normalized coords)
+  mouseView.setFloat32(4, event.offsetY / canvas.clientHeight, true);
 });
 
 canvas.addEventListener("pointerup", () => {
-  mouseParamsView.setUint32(16, 0, true);
+  mouseView.setUint32(16, 0, true);
 });
 
 // TODO: if the simulation feels laggy, store an array of movements and apply forces
 // along the path.
 canvas.addEventListener("pointermove", (event) => {
-  mouseParamsView.setFloat32(0, event.offsetX / canvas.clientHeight, true);
-  mouseParamsView.setFloat32(4, event.offsetY / canvas.clientHeight, true);
+  mouseView.setFloat32(0, event.offsetX / canvas.clientHeight, true);
+  mouseView.setFloat32(4, event.offsetY / canvas.clientHeight, true);
 });
 
 const canvasContext = canvas.getContext("webgpu");
@@ -60,29 +63,27 @@ async function init() {
   // --- params and mouse bind group ---
 
   const mouseBuffer = device.createBuffer({
-    size: 24,
-    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-  });
-
-  let computeParamsBuffer = device.createBuffer({
     size: 32,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
 
-  const computeParams = new ArrayBuffer(32);
-  const computeParamsView = new DataView(computeParams);
-  computeParamsView.setUint32(0, SIM_WIDTH, true);
-  computeParamsView.setUint32(4, SIM_HEIGHT, true);
-  computeParamsView.setFloat32(8, MOUSE_RADIUS, true);
-
-  device.queue.writeBuffer(computeParamsBuffer, 0, computeParams);
-
-  const coordConstantsBuffer = device.createBuffer({
-    size: 32,
+  let computeConstBuffer = device.createBuffer({
+    size: 80,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
 
-  let paramsBGLayout = device.createBindGroupLayout({
+  const computeConst = new ArrayBuffer(80);
+  const computeConstView = new DataView(computeConst);
+  computeConstView.setUint32(0, simulation_width, true);
+  computeConstView.setUint32(4, simulation_height, true);
+  computeConstView.setUint32(8, simulation_width + 2, true);
+  computeConstView.setUint32(12, simulation_height + 2, true);
+  computeConstView.setFloat32(68, viscosity, true);
+  computeConstView.setFloat32(72, dissipation_rate, true);
+
+  device.queue.writeBuffer(computeConstBuffer, 0, computeConst);
+
+  let constLayout = device.createBindGroupLayout({
     entries: [
       {
         binding: 0,
@@ -94,16 +95,11 @@ async function init() {
         visibility: GPUShaderStage.COMPUTE,
         buffer: { type: "uniform" },
       },
-      {
-        binding: 2,
-        visibility: GPUShaderStage.COMPUTE,
-        buffer: { type: "uniform" },
-      },
     ],
   });
 
-  let paramsBindGroup = device.createBindGroup({
-    layout: paramsBGLayout,
+  let constBindGroup = device.createBindGroup({
+    layout: constLayout,
     entries: [
       {
         binding: 0,
@@ -111,11 +107,7 @@ async function init() {
       },
       {
         binding: 1,
-        resource: { buffer: computeParamsBuffer },
-      },
-      {
-        binding: 2,
-        resource: { buffer: coordConstantsBuffer },
+        resource: { buffer: computeConstBuffer },
       },
     ],
   });
@@ -125,30 +117,30 @@ async function init() {
   let uBuffer = [];
   for (let i = 0; i < 2; ++i) {
     uBuffer[i] = device.createBuffer({
-      size: (SIM_WIDTH + 2) * (SIM_HEIGHT + 2) * 8,
+      size: (simulation_width + 2) * (simulation_height + 2) * 8,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
   }
 
-  let uBGLayout = device.createBindGroupLayout({
+  let uLayout = device.createBindGroupLayout({
     entries: [0, 1].map((i) => ({
       binding: i,
       visibility: GPUShaderStage.COMPUTE,
       buffer: { type: "storage" },
     })),
   });
-  let uBGEntries = [0, 1].map((i) => ({ binding: i, resource: uBuffer[i] }));
+  let uEntries = [0, 1].map((i) => ({ binding: i, resource: uBuffer[i] }));
 
   let uBindGroups = [];
   uBindGroups[0] = device.createBindGroup({
-    layout: uBGLayout,
-    entries: uBGEntries,
+    layout: uLayout,
+    entries: uEntries,
   });
-  uBGEntries[0].binding = 1;
-  uBGEntries[1].binding = 0;
+  uEntries[0].binding = 1;
+  uEntries[1].binding = 0;
   uBindGroups[1] = device.createBindGroup({
-    layout: uBGLayout,
-    entries: uBGEntries,
+    layout: uLayout,
+    entries: uEntries,
   });
 
   // --- s bind group ---
@@ -156,12 +148,12 @@ async function init() {
   let sBuffer = [];
   for (let i = 0; i < 2; ++i) {
     sBuffer[i] = device.createBuffer({
-      size: (SIM_WIDTH + 2) * (SIM_HEIGHT + 2) * 16,
+      size: (simulation_width + 2) * (simulation_height + 2) * 16,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
   }
 
-  let sBGLayout = device.createBindGroupLayout({
+  let sLayout = device.createBindGroupLayout({
     entries: [0, 1].map((i) => ({
       binding: i,
       visibility: GPUShaderStage.COMPUTE,
@@ -169,18 +161,18 @@ async function init() {
     })),
   });
 
-  let sBGEntries = [0, 1].map((i) => ({ binding: i, resource: sBuffer[i] }));
+  let sEntries = [0, 1].map((i) => ({ binding: i, resource: sBuffer[i] }));
 
   let sBindGroups = [];
   sBindGroups[0] = device.createBindGroup({
-    layout: sBGLayout,
-    entries: sBGEntries,
+    layout: sLayout,
+    entries: sEntries,
   });
-  sBGEntries[0].binding = 1;
-  sBGEntries[1].binding = 0;
+  sEntries[0].binding = 1;
+  sEntries[1].binding = 0;
   sBindGroups[1] = device.createBindGroup({
-    layout: sBGLayout,
-    entries: sBGEntries,
+    layout: sLayout,
+    entries: sEntries,
   });
 
   // --- p bind groups ---
@@ -188,17 +180,17 @@ async function init() {
   let pBuffer = [];
   for (let i = 0; i < 2; ++i) {
     pBuffer[i] = device.createBuffer({
-      size: (SIM_WIDTH + 2) * (SIM_HEIGHT + 2) * 4,
+      size: (simulation_width + 2) * (simulation_height + 2) * 4,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
   }
 
-  let divBuffer = device.createBuffer({
-    size: (SIM_WIDTH + 2) * (SIM_HEIGHT + 2) * 4,
+  let divergenceBuffer = device.createBuffer({
+    size: (simulation_width + 2) * (simulation_height + 2) * 4,
     usage: GPUBufferUsage.STORAGE,
   });
 
-  let pBGLayout = device.createBindGroupLayout({
+  let pLayout = device.createBindGroupLayout({
     entries: [
       {
         binding: 0,
@@ -218,7 +210,7 @@ async function init() {
     ],
   });
 
-  let pBGEntries = [
+  let pEntries = [
     {
       binding: 0,
       resource: pBuffer[0],
@@ -227,33 +219,27 @@ async function init() {
       binding: 1,
       resource: pBuffer[1],
     },
-    { binding: 2, resource: divBuffer },
+    { binding: 2, resource: divergenceBuffer },
   ];
 
   let pBindGroups = [];
   pBindGroups[0] = device.createBindGroup({
-    layout: pBGLayout,
-    entries: pBGEntries,
+    layout: pLayout,
+    entries: pEntries,
   });
-  pBGEntries[0].binding = 1;
-  pBGEntries[1].binding = 0;
+  pEntries[0].binding = 1;
+  pEntries[1].binding = 0;
   pBindGroups[1] = device.createBindGroup({
-    layout: pBGLayout,
-    entries: pBGEntries,
+    layout: pLayout,
+    entries: pEntries,
   });
 
   // --- pipelines ---
 
   const computeModule = device.createShaderModule({ code: computeCode });
 
-  let info = await computeModule.getCompilationInfo();
-  for (msg in info.messages) {
-    console.log(msg);
-  }
-  console.log("compilation done");
-
   const layout = device.createPipelineLayout({
-    bindGroupLayouts: [paramsBGLayout, uBGLayout, sBGLayout, pBGLayout],
+    bindGroupLayouts: [constLayout, uLayout, sLayout, pLayout],
   });
 
   const pipeline = (entryPoint) => {
@@ -271,6 +257,7 @@ async function init() {
   const divergencePipeline = pipeline("divergence");
   const jacobiPressurePipeline = pipeline("jacobi_pressure");
   const subPressureGradientPipeline = pipeline("sub_pressure_gradient");
+  const jacobiDiffusePipeline = pipeline("jacobi_diffuse");
   const addSourcePipeline = pipeline("add_source");
   const transportScalarFieldPipeline = pipeline("transport_scalar_field");
   const dissipatePipeline = pipeline("dissipate");
@@ -286,8 +273,8 @@ async function init() {
   const renderParamsView = new DataView(renderParams);
   renderParamsView.setUint32(0, canvas.width, true);
   renderParamsView.setUint32(4, canvas.height, true);
-  renderParamsView.setUint32(8, SIM_WIDTH, true);
-  renderParamsView.setUint32(12, SIM_HEIGHT, true);
+  renderParamsView.setUint32(8, simulation_width, true);
+  renderParamsView.setUint32(12, simulation_height, true);
   device.queue.writeBuffer(renderParamsBuffer, 0, renderParams);
 
   let renderBindGroupEntries = [
@@ -353,18 +340,18 @@ async function init() {
   const commandEncoder = device.createCommandEncoder();
   const computePassEncoder = commandEncoder.beginComputePass();
   computePassEncoder.setPipeline(pipeline("init_dye"));
-  computePassEncoder.setBindGroup(0, paramsBindGroup);
+  computePassEncoder.setBindGroup(0, constBindGroup);
   computePassEncoder.setBindGroup(1, uBindGroups[0]);
   computePassEncoder.setBindGroup(2, sBindGroups[0]);
   computePassEncoder.setBindGroup(3, pBindGroups[0]);
-  computePassEncoder.dispatchWorkgroups(...WORKGROUPS);
+  computePassEncoder.dispatchWorkgroups(...num_workgroups);
   computePassEncoder.end();
   device.queue.submit([commandEncoder.finish()]);
 
   return {
     device: device,
     bindGroups: {
-      params: paramsBindGroup,
+      params: constBindGroup,
       u: uBindGroups,
       s: sBindGroups,
       p: pBindGroups,
@@ -376,6 +363,7 @@ async function init() {
       divergence: divergencePipeline,
       jacobiPressure: jacobiPressurePipeline,
       subPressureGradient: subPressureGradientPipeline,
+      jacobiDiffuse: jacobiDiffusePipeline,
       addSource: addSourcePipeline,
       transportScalarField: transportScalarFieldPipeline,
       dissipate: dissipatePipeline,
@@ -397,10 +385,9 @@ async function init() {
       p: 0,
     },
     mouseBuffer: mouseBuffer,
-    computeParamsBuffer: computeParamsBuffer,
-    computeParams: computeParams,
-    computeParamsView: computeParamsView,
-    coordConstantsBuffer: coordConstantsBuffer,
+    computeConstBuffer: computeConstBuffer,
+    computeConst: computeConst,
+    computeConstView: computeConstView,
     renderParamsBuffer: renderParamsBuffer,
     renderParams: renderParams,
     renderParamsView: renderParamsView,
@@ -412,32 +399,26 @@ async function init() {
   };
 }
 
-let last_time = null;
-let last_mouse_pos = [0, 0];
+let prev_time = null;
+let prev_mouse = { x: 0, y: 0 };
 let cnt = 0;
 
 // TODO: if the timestep is too large, just reset the simulation.
 function frame(time, state) {
-  const dt = last_time === null ? 0 : time - last_time;
-  last_time = time;
-  console.log(dt);
+  const js_dt = prev_time === null ? 0 : time - prev_time;
+  prev_time = time;
+  console.log(js_dt);
 
   cnt++;
 
-  mouseParamsView.setFloat32(
-    8,
-    (mouseParamsView.getFloat32(0, true) - last_mouse_pos[0]) / dt,
-    true,
-  );
-  mouseParamsView.setFloat32(
-    12,
-    (mouseParamsView.getFloat32(4, true) - last_mouse_pos[1]) / dt,
-    true,
-  );
-  last_mouse_pos = [
-    mouseParamsView.getFloat32(0, true),
-    mouseParamsView.getFloat32(4, true),
-  ];
+  mouseView.setFloat32(8, mouseView.getFloat32(0, true) - prev_mouse.x, true);
+  mouseView.setFloat32(12, mouseView.getFloat32(4, true) - prev_mouse.y, true);
+  mouseView.setFloat32(20, mouse_radius, true);
+
+  prev_mouse = {
+    x: mouseView.getFloat32(0, true),
+    y: mouseView.getFloat32(4, true),
+  };
   state.device.queue.writeBuffer(state.mouseBuffer, 0, mouseParams);
 
   const dpr = window.devicePixelRatio;
@@ -448,32 +429,53 @@ function frame(time, state) {
 
   // --- compute part ---
 
-  state.computeParamsView.setFloat32(12, dt * 0.2, true);
-  state.computeParamsView.setFloat32(16, dt / 3141, true);
-  state.device.queue.writeBuffer(
-    state.computeParamsBuffer,
-    0,
-    state.computeParams,
-  );
+  const dt = js_dt * time_scale;
+  state.computeConstView.setFloat32(76, dt, true);
 
   const aspect_ratio = canvas.clientWidth / canvas.clientHeight;
-  const r_delta_x = SIM_WIDTH / aspect_ratio;
-  const r_delta_y = SIM_HEIGHT;
-  const sq_delta_x = 1 / (r_delta_x * r_delta_x);
-  const sq_delta_y = 1 / (r_delta_y * r_delta_y);
+  const r_delta_x = simulation_width / aspect_ratio;
+  const r_delta_y = simulation_height;
+  const sq_r_delta_x = r_delta_x * r_delta_x;
+  const sq_r_delta_y = r_delta_y * r_delta_y;
+  const sq_delta_x = 1.0 / sq_r_delta_x;
+  const sq_delta_y = 1.0 / sq_r_delta_y;
+  const laplace_diagonal = -2 * (r_delta_x * r_delta_x + r_delta_y * r_delta_y);
+
+  state.computeConstView.setFloat32(16, 1 / laplace_diagonal, true);
+  state.computeConstView.setFloat32(
+    20,
+    sq_delta_y / (2 * (sq_delta_x + sq_delta_y)),
+    true,
+  );
+  state.computeConstView.setFloat32(
+    24,
+    sq_delta_x / (2 * (sq_delta_x + sq_delta_y)),
+    true,
+  );
+
+  const diffuse_denom = 1.0 - viscosity * dt * laplace_diagonal;
+  console.log(diffuse_denom);
+
+  state.computeConstView.setFloat32(32, 1 / diffuse_denom);
+  state.computeConstView.setFloat32(
+    36,
+    (viscosity * dt * sq_r_delta_x) / diffuse_denom,
+  );
+  state.computeConstView.setFloat32(
+    40,
+    (viscosity * dt * sq_r_delta_y) / diffuse_denom,
+  );
+
+  state.computeConstView.setFloat32(48, r_delta_x, true);
+  state.computeConstView.setFloat32(52, r_delta_y, true);
+  state.computeConstView.setFloat32(56, 0.5 * r_delta_x, true);
+  state.computeConstView.setFloat32(60, 0.5 * r_delta_y, true);
+  state.computeConstView.setFloat32(64, aspect_ratio, true);
+
   state.device.queue.writeBuffer(
-    state.coordConstantsBuffer,
+    state.computeConstBuffer,
     0,
-    new Float32Array([
-      aspect_ratio,
-      1 / (2 * (r_delta_x * r_delta_x + r_delta_y * r_delta_y)),
-      sq_delta_y / (2 * (sq_delta_x + sq_delta_y)),
-      sq_delta_x / (2 * (sq_delta_x + sq_delta_y)),
-      r_delta_x,
-      r_delta_y,
-      0.5 * r_delta_x,
-      0.5 * r_delta_y,
-    ]),
+    state.computeConst,
   );
 
   const computePassEncoder = commandEncoder.beginComputePass();
@@ -484,48 +486,48 @@ function frame(time, state) {
 
   const set_boundary = (qty_name) => {
     computePassEncoder.setPipeline(state.pipelines.boundary[qty_name].h);
-    computePassEncoder.dispatchWorkgroups(SIM_WIDTH / 64);
+    computePassEncoder.dispatchWorkgroups(simulation_width / 64);
     computePassEncoder.setPipeline(state.pipelines.boundary[qty_name].v);
-    computePassEncoder.dispatchWorkgroups(SIM_HEIGHT / 64);
+    computePassEncoder.dispatchWorkgroups(simulation_height / 64);
   };
 
   computePassEncoder.setPipeline(state.pipelines.addForce);
-  computePassEncoder.dispatchWorkgroups(...WORKGROUPS);
+  computePassEncoder.dispatchWorkgroups(...num_workgroups);
 
   set_boundary("velocity");
   computePassEncoder.setPipeline(state.pipelines.transportVelocity);
-  computePassEncoder.dispatchWorkgroups(...WORKGROUPS);
+  computePassEncoder.dispatchWorkgroups(...num_workgroups);
   state.parity.u ^= 1;
   computePassEncoder.setBindGroup(1, state.bindGroups.u[state.parity.u]);
 
   set_boundary("velocity");
   computePassEncoder.setPipeline(state.pipelines.divergence);
-  computePassEncoder.dispatchWorkgroups(...WORKGROUPS);
+  computePassEncoder.dispatchWorkgroups(...num_workgroups);
 
   // We "warm-start" from the previous pressure. One could consider doing more iterations
   // if a force is currently active.
-  for (let i = 0; i < 60; ++i) {
+  for (let i = 0; i < jacobi_iterations; ++i) {
     set_boundary("pressure");
     computePassEncoder.setPipeline(state.pipelines.jacobiPressure);
-    computePassEncoder.dispatchWorkgroups(...WORKGROUPS);
+    computePassEncoder.dispatchWorkgroups(...num_workgroups);
     state.parity.p ^= 1;
     computePassEncoder.setBindGroup(3, state.bindGroups.p[state.parity.p]);
   }
 
   set_boundary("pressure");
   computePassEncoder.setPipeline(state.pipelines.subPressureGradient);
-  computePassEncoder.dispatchWorkgroups(...WORKGROUPS);
+  computePassEncoder.dispatchWorkgroups(...num_workgroups);
 
   computePassEncoder.setPipeline(state.pipelines.addSource);
-  computePassEncoder.dispatchWorkgroups(...WORKGROUPS);
+  computePassEncoder.dispatchWorkgroups(...num_workgroups);
 
   computePassEncoder.setPipeline(state.pipelines.transportScalarField);
-  computePassEncoder.dispatchWorkgroups(...WORKGROUPS);
+  computePassEncoder.dispatchWorkgroups(...num_workgroups);
   state.parity.s ^= 1;
   computePassEncoder.setBindGroup(2, state.bindGroups.s[state.parity.s]);
 
   computePassEncoder.setPipeline(state.pipelines.dissipate);
-  computePassEncoder.dispatchWorkgroups(...WORKGROUPS);
+  computePassEncoder.dispatchWorkgroups(...num_workgroups);
 
   computePassEncoder.end();
 
@@ -560,11 +562,11 @@ function frame(time, state) {
   state.device.queue.submit([commandEncoder.finish()]);
 
   if (cnt % 41 == 0) {
-    debug_buffer(
-      state.data.s[state.parity.s],
-      (SIM_WIDTH + 2) * (SIM_HEIGHT + 2) * 16,
-      state.device,
-    );
+    // debug_buffer(
+    //   state.data.s[state.parity.s],
+    //   (simulation_width + 2) * (simulation_height + 2) * 16,
+    //   state.device,
+    // );
   }
 
   requestAnimationFrame((time) => frame(time, state));
@@ -590,7 +592,10 @@ async function debug_buffer(input, size, device) {
   let arr = new Float32Array(out);
   // console.log(arr);
   console.log(arr.every((x) => x === 0));
-  console.log(arr[SIM_HEIGHT * SIM_WIDTH], arr[SIM_HEIGHT * SIM_WIDTH + 1]);
+  console.log(
+    arr[simulation_height * simulation_width],
+    arr[simulation_height * simulation_width + 1],
+  );
 }
 
 async function debug_texture(input, width, height, device) {
