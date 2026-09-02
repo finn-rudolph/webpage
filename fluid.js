@@ -8,12 +8,12 @@ const SIMULATION_SPEED = 0.2;
 
 const MOUSE_RADIUS = 0.05; // radius of the mouse force
 
-const PRESSURE_JACOBI_ITERATIONS = 60;
-const VISCOSITY_JACOBI_ITERATIONS = 40;
+const PRESSURE_JACOBI_ITERATIONS = 70;
 
 let canvas = document.getElementById("fluidCanvas");
 console.log(`canvas.width = ${canvas.width}`);
 console.log(`canvas.height = ${canvas.height}`);
+console.log(`jacobi it = ${PRESSURE_JACOBI_ITERATIONS}`);
 
 let mouseParams = new ArrayBuffer(24);
 let mouseParamsView = new DataView(mouseParams);
@@ -37,8 +37,13 @@ canvas.addEventListener("pointermove", (event) => {
 
 const canvasContext = canvas.getContext("webgpu");
 
-const computeCode = await fetch("compute.wgsl").then((r) => r.text());
-const renderCode = await fetch("render.wgsl").then((r) => r.text());
+// TODO: remove the no-cache
+const computeCode = await fetch("compute.wgsl", { cache: "no-store" }).then(
+  (r) => r.text(),
+);
+const renderCode = await fetch("render.wgsl", { cache: "no-store" }).then((r) =>
+  r.text(),
+);
 
 async function init() {
   if (!navigator.gpu) {
@@ -170,15 +175,11 @@ async function init() {
 
   // --- s bind group ---
 
-  let sTexture = [];
+  let sBuffer = [];
   for (let i = 0; i < 2; ++i) {
-    sTexture[i] = device.createTexture({
-      size: [SIMULATION_WIDTH + 2, SIMULATION_HEIGHT + 2],
-      format: "r32float",
-      usage:
-        GPUTextureUsage.STORAGE_BINDING |
-        GPUTextureUsage.TEXTURE_BINDING |
-        GPUTextureUsage.COPY_SRC,
+    sBuffer[i] = device.createBuffer({
+      size: (SIMULATION_WIDTH + 2) * (SIMULATION_HEIGHT + 2) * 4,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
   }
 
@@ -187,20 +188,12 @@ async function init() {
       {
         binding: 0,
         visibility: GPUShaderStage.COMPUTE,
-        storageTexture: {
-          access: "read-write",
-          format: "r32float",
-          viewDimension: "2d",
-        },
+        buffer: { type: "storage" },
       },
       {
         binding: 1,
         visibility: GPUShaderStage.COMPUTE,
-        storageTexture: {
-          access: "read-write",
-          format: "r32float",
-          viewDimension: "2d",
-        },
+        buffer: { type: "storage" },
       },
     ],
   });
@@ -208,11 +201,11 @@ async function init() {
   let sBGEntries = [
     {
       binding: 0,
-      resource: sTexture[0],
+      resource: sBuffer[0],
     },
     {
       binding: 1,
-      resource: sTexture[1],
+      resource: sBuffer[1],
     },
   ];
 
@@ -315,7 +308,62 @@ async function init() {
 
   // --- render stuff ---
 
+  let renderParamsBuffer = device.createBuffer({
+    size: 16,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+
+  const renderParams = new ArrayBuffer(16);
+  const renderParamsView = new DataView(renderParams);
+  renderParamsView.setUint32(0, canvas.width, true);
+  renderParamsView.setUint32(4, canvas.height, true);
+  renderParamsView.setUint32(8, SIMULATION_WIDTH, true);
+  renderParamsView.setUint32(12, SIMULATION_HEIGHT, true);
+  device.queue.writeBuffer(renderParamsBuffer, 0, renderParams);
+
+  let renderBindGroupEntries = [
+    {
+      binding: 0,
+      resource: { buffer: sBuffer[0] },
+    },
+    {
+      binding: 1,
+      resource: { buffer: renderParamsBuffer },
+    },
+  ];
+
+  let renderBindGroupLayout = device.createBindGroupLayout({
+    entries: [
+      {
+        binding: 0,
+        visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX,
+        buffer: { type: "read-only-storage" },
+      },
+      {
+        binding: 1,
+        visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX,
+        buffer: { type: "uniform" },
+      },
+    ],
+  });
+
+  const renderBindGroups = [];
+  renderBindGroups[0] = device.createBindGroup({
+    layout: renderBindGroupLayout,
+    entries: renderBindGroupEntries,
+  });
+
+  renderBindGroupEntries[0].resource = sBuffer[1];
+  renderBindGroups[1] = device.createBindGroup({
+    layout: renderBindGroupLayout,
+    entries: renderBindGroupEntries,
+  });
+
+  const renderPipelineLayout = device.createPipelineLayout({
+    bindGroupLayouts: [renderBindGroupLayout],
+  });
   const renderModule = device.createShaderModule({ code: renderCode });
+
   const renderPipeline = device.createRenderPipeline({
     vertex: {
       module: renderModule,
@@ -330,41 +378,7 @@ async function init() {
         },
       ],
     },
-    layout: "auto",
-  });
-
-  let renderParamsBuffer = device.createBuffer({
-    size: 8,
-    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-  });
-
-  const renderParams = new ArrayBuffer(8);
-  const renderParamsView = new DataView(renderParams);
-  renderParamsView.setUint32(0, canvas.width, true);
-  renderParamsView.setUint32(4, canvas.height, true);
-  device.queue.writeBuffer(renderParamsBuffer, 0, renderParams);
-
-  let renderBindGroupEntries = [
-    {
-      binding: 0,
-      resource: sTexture[0],
-    },
-    {
-      binding: 1,
-      resource: { buffer: renderParamsBuffer },
-    },
-  ];
-
-  const renderBindGroups = [];
-  renderBindGroups[0] = device.createBindGroup({
-    layout: renderPipeline.getBindGroupLayout(0),
-    entries: renderBindGroupEntries,
-  });
-
-  renderBindGroupEntries[0].resource = sTexture[1];
-  renderBindGroups[1] = device.createBindGroup({
-    layout: renderPipeline.getBindGroupLayout(0),
-    entries: renderBindGroupEntries,
+    layout: renderPipelineLayout,
   });
 
   return {
@@ -412,7 +426,7 @@ async function init() {
     renderParamsView: renderParamsView,
     data: {
       u: uBuffer,
-      s: sTexture,
+      s: sBuffer,
       p: pBuffer,
     },
   };

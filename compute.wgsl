@@ -45,10 +45,10 @@ var<storage, read_write> u0: array<vec2f>;
 var<storage, read_write> u1: array<vec2f>;
 
 @group(2) @binding(0)
-var s0: texture_storage_2d<r32float, read_write>;
+var<storage, read_write> s0: array<f32>;
 
 @group(2) @binding(1)
-var s1: texture_storage_2d<r32float, read_write>;
+var<storage, read_write> s1: array<f32>;
 
 @group(3) @binding(0)
 var<storage, read_write> p0: array<f32>;
@@ -83,18 +83,14 @@ fn simulation_coords(normalized_coords: vec2f) -> vec2f {
     );
 }
 
-// coords are in [0, params.simulation_size.x/y]
-fn interpolate_2d_f(texture: texture_storage_2d<r32float, read_write>, coords: vec2f) -> f32 {
-    let upper_left = vec2u(coords + vec2f(0.5, 0.5)); // actually it is -(0.5, 0.5), but there is a boundary
+fn interpolate_s0(coords: vec2f) -> f32 {
+    let upper_left = vec2u(coords + vec2f(0.5, 0.5));
     let mix_weight = coords + vec2f(0.5, 0.5) - vec2f(upper_left);
 
-    return mix2d_f(
-        textureLoad(texture, upper_left).r,
-        textureLoad(texture, upper_left + vec2u(0, 1)).r,
-        textureLoad(texture, upper_left + vec2u(1, 0)).r,
-        textureLoad(texture, upper_left + vec2u(1, 1)).r,
-        mix_weight
-    );
+    let width = params.simulation_size.x + 2;
+    let i = upper_left.y * width + upper_left.x;
+
+    return mix2d_f(s0[i], s0[i + width], s0[i + 1], s0[i + width + 1], mix_weight);
 }
 
 // one cannot pass arrays to functions
@@ -218,10 +214,8 @@ fn add_source(@builtin(global_invocation_id) id: vec3u) {
         let nc = normalized_coords(id.xy);
         let d = distance(nc, mouse.position);
         if d < params.mouse_radius {
-            let pos_with_boundary = id.xy + vec2u(1, 1);
-            let value = textureLoad(s0, pos_with_boundary).r;
-            textureStore(s0, pos_with_boundary,
-                vec4f(value + f32(params.mouse_radius - d) / (10.0 * params.mouse_radius), 0.0, 0.0, 0.0));
+            let i = (id.y + 1) * (params.simulation_size.x + 2) + id.x + 1;
+            s0[i] += f32(params.mouse_radius - d) / (10.0 * params.mouse_radius);
         }
     }
 }
@@ -231,7 +225,7 @@ fn transport_scalar_field(
     @builtin(global_invocation_id) id: vec3u,
 ) {
     let previous_position = simulation_coords(trace_particle(id.xy));
-    textureStore(s1, id.xy + vec2u(1, 1), vec4f(interpolate_2d_f(s0, previous_position), 0.0, 0.0, 0.0));
+    s1[(id.y + 1) * (params.simulation_size.x + 2) + id.x + 1] = interpolate_s0(previous_position);
 }
 
 // traces a particle at `ìnitial_position` backwards through `u0` for time `params.dt`
