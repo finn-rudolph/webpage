@@ -45,10 +45,10 @@ var<storage, read_write> u0: array<vec2f>;
 var<storage, read_write> u1: array<vec2f>;
 
 @group(2) @binding(0)
-var<storage, read_write> s0: array<f32>;
+var<storage, read_write> s0: array<vec4f>;
 
 @group(2) @binding(1)
-var<storage, read_write> s1: array<f32>;
+var<storage, read_write> s1: array<vec4f>;
 
 @group(3) @binding(0)
 var<storage, read_write> p0: array<f32>;
@@ -64,6 +64,10 @@ fn mix2d_f(a00: f32, a01: f32, a10: f32, a11: f32, w: vec2f) -> f32 {
 }
 
 fn mix2d_vec2f(a00: vec2f, a01: vec2f, a10: vec2f, a11: vec2f, w: vec2f) -> vec2f {
+    return mix(mix(a00, a01, w.y), mix(a10, a11, w.y), w.x);
+}
+
+fn mix2d_vec4f(a00: vec4f, a01: vec4f, a10: vec4f, a11: vec4f, w: vec2f) -> vec4f {
     return mix(mix(a00, a01, w.y), mix(a10, a11, w.y), w.x);
 }
 
@@ -83,14 +87,14 @@ fn simulation_coords(normalized_coords: vec2f) -> vec2f {
     );
 }
 
-fn interpolate_s0(coords: vec2f) -> f32 {
+fn interpolate_s0(coords: vec2f) -> vec4f {
     let upper_left = vec2u(coords + vec2f(0.5, 0.5));
     let mix_weight = coords + vec2f(0.5, 0.5) - vec2f(upper_left);
 
     let width = params.simulation_size.x + 2;
     let i = upper_left.y * width + upper_left.x;
 
-    return mix2d_f(s0[i], s0[i + width], s0[i + 1], s0[i + width + 1], mix_weight);
+    return mix2d_vec4f(s0[i], s0[i + width], s0[i + 1], s0[i + width + 1], mix_weight);
 }
 
 // one cannot pass arrays to functions
@@ -116,7 +120,7 @@ fn add_force(
         let d = distance(nc, mouse.position);
         if d < params.mouse_radius {
             let i = (id.y + 1) * (params.simulation_size.x + 2) + id.x + 1;
-            u0[i] += 2.0 * (f32(params.mouse_radius - d) / params.mouse_radius) * mouse.displacement;
+            u0[i] += (f32(params.mouse_radius - d) / params.mouse_radius) * mouse.displacement;
         }
     }
 }
@@ -195,27 +199,12 @@ fn velocity_boundary_v(@builtin(global_invocation_id) id: vec3u) {
 
 @compute @workgroup_size(8, 8)
 fn add_source(@builtin(global_invocation_id) id: vec3u) {
-    // let nc = normalized_coords(id.xy);
-    // let row = u32(nc.y * f32(12));
-    // let residue = nc.y * f32(12) - f32(row);
-
-    // let source_nc = vec2f(params.tracer_diam, params.tracer_diam * (f32(2 * row) + 1));
-    // let d = distance(nc, source_nc);
-    // if 2.0 * d < params.tracer_diam {
-    //     let value = textureLoad(s0, id.xy).r;
-    //     textureStore(s0, id.xy, vec4f(value + f32(params.tracer_diam - 2.0 * d) / (10.0 * params.tracer_diam), 0.0, 0.0, 0.0));
-    // }
-
-    // The sources of the tracers are at (tracer_diam, tracer_diam * n)
-    // for integer n \ge 1.
-    // Check whether the current simulation cell
-
     if mouse.is_down == 1 {
         let nc = normalized_coords(id.xy);
         let d = distance(nc, mouse.position);
         if d < params.mouse_radius {
             let i = (id.y + 1) * (params.simulation_size.x + 2) + id.x + 1;
-            s0[i] += f32(params.mouse_radius - d) / (10.0 * params.mouse_radius);
+            s0[i] += vec4f(0.5, 0.9, 0.3, 1.0) * (params.mouse_radius - d) / (10.0 * params.mouse_radius);
         }
     }
 }

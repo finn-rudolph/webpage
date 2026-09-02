@@ -1,19 +1,15 @@
-const SIMULATION_WIDTH = 1024;
-const SIMULATION_HEIGHT = 512;
+const SIM_WIDTH = 1024;
+const SIM_HEIGHT = 512;
 
-const WG_X = SIMULATION_WIDTH / 8;
-const WG_Y = SIMULATION_HEIGHT / 8;
-
-const SIMULATION_SPEED = 0.2;
+const WG_X = SIM_WIDTH / 8;
+const WG_Y = SIM_HEIGHT / 8;
+const WORKGROUPS = [SIM_WIDTH / 8, SIM_HEIGHT / 8];
 
 const MOUSE_RADIUS = 0.05; // radius of the mouse force
-
-const PRESSURE_JACOBI_ITERATIONS = 70;
 
 let canvas = document.getElementById("fluidCanvas");
 console.log(`canvas.width = ${canvas.width}`);
 console.log(`canvas.height = ${canvas.height}`);
-console.log(`jacobi it = ${PRESSURE_JACOBI_ITERATIONS}`);
 
 let mouseParams = new ArrayBuffer(24);
 let mouseParamsView = new DataView(mouseParams);
@@ -75,8 +71,8 @@ async function init() {
 
   const computeParams = new ArrayBuffer(16);
   const computeParamsView = new DataView(computeParams);
-  computeParamsView.setUint32(0, SIMULATION_WIDTH, true);
-  computeParamsView.setUint32(4, SIMULATION_HEIGHT, true);
+  computeParamsView.setUint32(0, SIM_WIDTH, true);
+  computeParamsView.setUint32(4, SIM_HEIGHT, true);
   computeParamsView.setFloat32(8, MOUSE_RADIUS, true);
 
   device.queue.writeBuffer(computeParamsBuffer, 0, computeParams);
@@ -85,7 +81,6 @@ async function init() {
     size: 32,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
-  const coordConstants = new Float32Array(8);
 
   let paramsBGLayout = device.createBindGroupLayout({
     entries: [
@@ -130,36 +125,19 @@ async function init() {
   let uBuffer = [];
   for (let i = 0; i < 2; ++i) {
     uBuffer[i] = device.createBuffer({
-      size: (SIMULATION_WIDTH + 2) * (SIMULATION_HEIGHT + 2) * 8,
+      size: (SIM_WIDTH + 2) * (SIM_HEIGHT + 2) * 8,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
   }
 
   let uBGLayout = device.createBindGroupLayout({
-    entries: [
-      {
-        binding: 0,
-        visibility: GPUShaderStage.COMPUTE,
-        buffer: { type: "storage" },
-      },
-      {
-        binding: 1,
-        visibility: GPUShaderStage.COMPUTE,
-        buffer: { type: "storage" },
-      },
-    ],
+    entries: [0, 1].map((i) => ({
+      binding: i,
+      visibility: GPUShaderStage.COMPUTE,
+      buffer: { type: "storage" },
+    })),
   });
-
-  let uBGEntries = [
-    {
-      binding: 0,
-      resource: uBuffer[0],
-    },
-    {
-      binding: 1,
-      resource: uBuffer[1],
-    },
-  ];
+  let uBGEntries = [0, 1].map((i) => ({ binding: i, resource: uBuffer[i] }));
 
   let uBindGroups = [];
   uBindGroups[0] = device.createBindGroup({
@@ -178,36 +156,20 @@ async function init() {
   let sBuffer = [];
   for (let i = 0; i < 2; ++i) {
     sBuffer[i] = device.createBuffer({
-      size: (SIMULATION_WIDTH + 2) * (SIMULATION_HEIGHT + 2) * 4,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      size: (SIM_WIDTH + 2) * (SIM_HEIGHT + 2) * 16,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
   }
 
   let sBGLayout = device.createBindGroupLayout({
-    entries: [
-      {
-        binding: 0,
-        visibility: GPUShaderStage.COMPUTE,
-        buffer: { type: "storage" },
-      },
-      {
-        binding: 1,
-        visibility: GPUShaderStage.COMPUTE,
-        buffer: { type: "storage" },
-      },
-    ],
+    entries: [0, 1].map((i) => ({
+      binding: i,
+      visibility: GPUShaderStage.COMPUTE,
+      buffer: { type: "storage" },
+    })),
   });
 
-  let sBGEntries = [
-    {
-      binding: 0,
-      resource: sBuffer[0],
-    },
-    {
-      binding: 1,
-      resource: sBuffer[1],
-    },
-  ];
+  let sBGEntries = [0, 1].map((i) => ({ binding: i, resource: sBuffer[i] }));
 
   let sBindGroups = [];
   sBindGroups[0] = device.createBindGroup({
@@ -226,13 +188,13 @@ async function init() {
   let pBuffer = [];
   for (let i = 0; i < 2; ++i) {
     pBuffer[i] = device.createBuffer({
-      size: (SIMULATION_WIDTH + 2) * (SIMULATION_HEIGHT + 2) * 4,
+      size: (SIM_WIDTH + 2) * (SIM_HEIGHT + 2) * 4,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
   }
 
   let divBuffer = device.createBuffer({
-    size: (SIMULATION_WIDTH + 2) * (SIMULATION_HEIGHT + 2) * 4,
+    size: (SIM_WIDTH + 2) * (SIM_HEIGHT + 2) * 4,
     usage: GPUBufferUsage.STORAGE,
   });
 
@@ -284,6 +246,12 @@ async function init() {
 
   const computeModule = device.createShaderModule({ code: computeCode });
 
+  let info = await computeModule.getCompilationInfo();
+  for (msg in info.messages) {
+    console.log(msg);
+  }
+  console.log("compilation done");
+
   const layout = device.createPipelineLayout({
     bindGroupLayouts: [paramsBGLayout, uBGLayout, sBGLayout, pBGLayout],
   });
@@ -317,8 +285,8 @@ async function init() {
   const renderParamsView = new DataView(renderParams);
   renderParamsView.setUint32(0, canvas.width, true);
   renderParamsView.setUint32(4, canvas.height, true);
-  renderParamsView.setUint32(8, SIMULATION_WIDTH, true);
-  renderParamsView.setUint32(12, SIMULATION_HEIGHT, true);
+  renderParamsView.setUint32(8, SIM_WIDTH, true);
+  renderParamsView.setUint32(12, SIM_HEIGHT, true);
   device.queue.writeBuffer(renderParamsBuffer, 0, renderParams);
 
   let renderBindGroupEntries = [
@@ -420,7 +388,6 @@ async function init() {
     computeParams: computeParams,
     computeParamsView: computeParamsView,
     coordConstantsBuffer: coordConstantsBuffer,
-    coordConstants: coordConstants,
     renderParamsBuffer: renderParamsBuffer,
     renderParams: renderParams,
     renderParamsView: renderParamsView,
@@ -443,7 +410,6 @@ function frame(time, state) {
 
   cnt++;
 
-  // console.log((mouseParamsView.getFloat32(0, true) - last_mouse_pos[0]) / dt);
   mouseParamsView.setFloat32(
     8,
     (mouseParamsView.getFloat32(0, true) - last_mouse_pos[0]) / dt,
@@ -468,7 +434,7 @@ function frame(time, state) {
 
   // --- compute part ---
 
-  state.computeParamsView.setFloat32(12, dt * SIMULATION_SPEED, true);
+  state.computeParamsView.setFloat32(12, dt * 0.2, true);
   state.device.queue.writeBuffer(
     state.computeParamsBuffer,
     0,
@@ -476,23 +442,23 @@ function frame(time, state) {
   );
 
   const aspect_ratio = canvas.clientWidth / canvas.clientHeight;
-  const r_delta_x = SIMULATION_WIDTH / aspect_ratio;
-  const r_delta_y = SIMULATION_HEIGHT;
+  const r_delta_x = SIM_WIDTH / aspect_ratio;
+  const r_delta_y = SIM_HEIGHT;
   const sq_delta_x = 1 / (r_delta_x * r_delta_x);
   const sq_delta_y = 1 / (r_delta_y * r_delta_y);
-  state.coordConstants[0] = aspect_ratio;
-  state.coordConstants[1] =
-    1 / (2 * (r_delta_x * r_delta_x + r_delta_y * r_delta_y));
-  state.coordConstants[2] = sq_delta_y / (2 * (sq_delta_x + sq_delta_y));
-  state.coordConstants[3] = sq_delta_x / (2 * (sq_delta_x + sq_delta_y));
-  state.coordConstants[4] = r_delta_x;
-  state.coordConstants[5] = r_delta_y;
-  state.coordConstants[6] = 0.5 * r_delta_x;
-  state.coordConstants[7] = 0.5 * r_delta_y;
   state.device.queue.writeBuffer(
     state.coordConstantsBuffer,
     0,
-    state.coordConstants,
+    new Float32Array([
+      aspect_ratio,
+      1 / (2 * (r_delta_x * r_delta_x + r_delta_y * r_delta_y)),
+      sq_delta_y / (2 * (sq_delta_x + sq_delta_y)),
+      sq_delta_x / (2 * (sq_delta_x + sq_delta_y)),
+      r_delta_x,
+      r_delta_y,
+      0.5 * r_delta_x,
+      0.5 * r_delta_y,
+    ]),
   );
 
   const computePassEncoder = commandEncoder.beginComputePass();
@@ -503,13 +469,13 @@ function frame(time, state) {
 
   const set_boundary = (qty_name) => {
     computePassEncoder.setPipeline(state.pipelines.boundary[qty_name].h);
-    computePassEncoder.dispatchWorkgroups(SIMULATION_WIDTH / 64);
+    computePassEncoder.dispatchWorkgroups(SIM_WIDTH / 64);
     computePassEncoder.setPipeline(state.pipelines.boundary[qty_name].v);
-    computePassEncoder.dispatchWorkgroups(SIMULATION_HEIGHT / 64);
+    computePassEncoder.dispatchWorkgroups(SIM_HEIGHT / 64);
   };
 
   computePassEncoder.setPipeline(state.pipelines.addForce);
-  computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
+  computePassEncoder.dispatchWorkgroups(...WORKGROUPS);
 
   set_boundary("velocity");
   computePassEncoder.setPipeline(state.pipelines.transportVelocity);
@@ -523,7 +489,7 @@ function frame(time, state) {
 
   // We "warm-start" from the previous pressure. One could consider doing more iterations
   // if a force is currently active.
-  for (let i = 0; i < PRESSURE_JACOBI_ITERATIONS; ++i) {
+  for (let i = 0; i < 60; ++i) {
     set_boundary("pressure");
     computePassEncoder.setPipeline(state.pipelines.jacobiPressure);
     computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
@@ -555,16 +521,6 @@ function frame(time, state) {
     state.renderParams,
   );
 
-  // const msaaTexture = device.createTexture({
-  //   size: {
-  //     width: canvas.width,
-  //     height: canvas.height,
-  //   },
-  //   format: navigator.gpu.getPreferredCanvasFormat(),
-  //   sampleCount: 4,
-  //   usage: GPUTextureUsage.RENDER_ATTACHMENT,
-  // });
-
   const renderPassDescriptor = {
     colorAttachments: [
       {
@@ -586,11 +542,11 @@ function frame(time, state) {
   state.device.queue.submit([commandEncoder.finish()]);
 
   if (cnt % 41 == 0) {
-    // debug_buffer(
-    //   state.data.u[state.parity.u],
-    //   (SIMULATION_WIDTH + 2) * (SIMULATION_HEIGHT + 2) * 8,
-    //   state.device,
-    // );
+    debug_buffer(
+      state.data.s[state.parity.s],
+      (SIM_WIDTH + 2) * (SIM_HEIGHT + 2) * 16,
+      state.device,
+    );
   }
 
   requestAnimationFrame((time) => frame(time, state));
@@ -616,10 +572,7 @@ async function debug_buffer(input, size, device) {
   let arr = new Float32Array(out);
   // console.log(arr);
   console.log(arr.every((x) => x === 0));
-  console.log(
-    arr[SIMULATION_HEIGHT * SIMULATION_WIDTH],
-    arr[SIMULATION_HEIGHT * SIMULATION_WIDTH + 1],
-  );
+  console.log(arr[SIM_HEIGHT * SIM_WIDTH], arr[SIM_HEIGHT * SIM_WIDTH + 1]);
 }
 
 async function debug_texture(input, width, height, device) {
