@@ -1,4 +1,4 @@
-const SIMULATION_WIDTH = 1024;
+const SIMULATION_WIDTH = 512;
 const SIMULATION_HEIGHT = 512;
 
 const WG_X = SIMULATION_WIDTH / 8;
@@ -8,7 +8,7 @@ const SIMULATION_SPEED = 0.2;
 
 const MOUSE_RADIUS = 0.05; // radius of the mouse force
 
-const PRESSURE_JACOBI_ITERATIONS = 70;
+const PRESSURE_JACOBI_ITERATIONS = 30;
 
 let canvas = document.getElementById("fluidCanvas");
 console.log(`canvas.width = ${canvas.width}`);
@@ -51,7 +51,9 @@ async function init() {
   }
 
   const adapter = await navigator.gpu.requestAdapter();
-  const device = await adapter.requestDevice();
+  const device = await adapter.requestDevice({
+    requiredFeatures: ["shader-f16"],
+  });
 
   canvasContext.configure({
     device,
@@ -85,7 +87,8 @@ async function init() {
     size: 32,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
-  const coordConstants = new Float32Array(8);
+  const coordConstants = new ArrayBuffer(32);
+  const coordConstantsView = new DataView(coordConstants);
 
   let paramsBGLayout = device.createBindGroupLayout({
     entries: [
@@ -130,7 +133,7 @@ async function init() {
   let uBuffer = [];
   for (let i = 0; i < 2; ++i) {
     uBuffer[i] = device.createBuffer({
-      size: (SIMULATION_WIDTH + 2) * (SIMULATION_HEIGHT + 2) * 8,
+      size: (SIMULATION_WIDTH + 2) * (SIMULATION_HEIGHT + 2) * 4,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
   }
@@ -178,8 +181,8 @@ async function init() {
   let sBuffer = [];
   for (let i = 0; i < 2; ++i) {
     sBuffer[i] = device.createBuffer({
-      size: (SIMULATION_WIDTH + 2) * (SIMULATION_HEIGHT + 2) * 4,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      size: (SIMULATION_WIDTH + 2) * (SIMULATION_HEIGHT + 2) * 2,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
   }
 
@@ -226,13 +229,13 @@ async function init() {
   let pBuffer = [];
   for (let i = 0; i < 2; ++i) {
     pBuffer[i] = device.createBuffer({
-      size: (SIMULATION_WIDTH + 2) * (SIMULATION_HEIGHT + 2) * 4,
+      size: (SIMULATION_WIDTH + 2) * (SIMULATION_HEIGHT + 2) * 2,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
   }
 
   let divBuffer = device.createBuffer({
-    size: (SIMULATION_WIDTH + 2) * (SIMULATION_HEIGHT + 2) * 4,
+    size: (SIMULATION_WIDTH + 2) * (SIMULATION_HEIGHT + 2) * 2,
     usage: GPUBufferUsage.STORAGE,
   });
 
@@ -421,6 +424,7 @@ async function init() {
     computeParamsView: computeParamsView,
     coordConstantsBuffer: coordConstantsBuffer,
     coordConstants: coordConstants,
+    coordConstantsView: coordConstantsView,
     renderParamsBuffer: renderParamsBuffer,
     renderParams: renderParams,
     renderParamsView: renderParamsView,
@@ -468,7 +472,7 @@ function frame(time, state) {
 
   // --- compute part ---
 
-  state.computeParamsView.setFloat32(12, dt * SIMULATION_SPEED, true);
+  state.computeParamsView.setFloat16(12, dt * SIMULATION_SPEED);
   state.device.queue.writeBuffer(
     state.computeParamsBuffer,
     0,
@@ -480,15 +484,26 @@ function frame(time, state) {
   const r_delta_y = SIMULATION_HEIGHT;
   const sq_delta_x = 1 / (r_delta_x * r_delta_x);
   const sq_delta_y = 1 / (r_delta_y * r_delta_y);
-  state.coordConstants[0] = aspect_ratio;
-  state.coordConstants[1] =
-    1 / (2 * (r_delta_x * r_delta_x + r_delta_y * r_delta_y));
-  state.coordConstants[2] = sq_delta_y / (2 * (sq_delta_x + sq_delta_y));
-  state.coordConstants[3] = sq_delta_x / (2 * (sq_delta_x + sq_delta_y));
-  state.coordConstants[4] = r_delta_x;
-  state.coordConstants[5] = r_delta_y;
-  state.coordConstants[6] = 0.5 * r_delta_x;
-  state.coordConstants[7] = 0.5 * r_delta_y;
+  state.coordConstantsView.setFloat32(0, aspect_ratio, true);
+  state.coordConstantsView.setFloat32(4, r_delta_x, true);
+  state.coordConstantsView.setFloat32(8, r_delta_y, true);
+  state.coordConstantsView.setFloat16(
+    12,
+    1 / (2 * (r_delta_x * r_delta_x + r_delta_y * r_delta_y)),
+    true,
+  );
+  state.coordConstantsView.setFloat16(
+    14,
+    sq_delta_y / (2 * (sq_delta_x + sq_delta_y)),
+    true,
+  );
+  state.coordConstantsView.setFloat16(
+    16,
+    sq_delta_x / (2 * (sq_delta_x + sq_delta_y)),
+    true,
+  );
+  state.coordConstantsView.setFloat16(18, 0.5 * r_delta_x, true);
+  state.coordConstantsView.setFloat16(20, 0.5 * r_delta_y, true);
   state.device.queue.writeBuffer(
     state.coordConstantsBuffer,
     0,
@@ -587,8 +602,8 @@ function frame(time, state) {
 
   if (cnt % 41 == 0) {
     // debug_buffer(
-    //   state.data.u[state.parity.u],
-    //   (SIMULATION_WIDTH + 2) * (SIMULATION_HEIGHT + 2) * 8,
+    //   state.data.s[state.parity.s],
+    //   (SIMULATION_WIDTH + 2) * (SIMULATION_HEIGHT + 2) * 2,
     //   state.device,
     // );
   }
@@ -613,13 +628,9 @@ async function debug_buffer(input, size, device) {
   const copyArrayBuffer = buffer.getMappedRange(0, size);
   const out = copyArrayBuffer.slice();
   buffer.unmap();
-  let arr = new Float32Array(out);
-  // console.log(arr);
+  let arr = new Float16Array(out);
+  console.log(arr);
   console.log(arr.every((x) => x === 0));
-  console.log(
-    arr[SIMULATION_HEIGHT * SIMULATION_WIDTH],
-    arr[SIMULATION_HEIGHT * SIMULATION_WIDTH + 1],
-  );
 }
 
 async function debug_texture(input, width, height, device) {

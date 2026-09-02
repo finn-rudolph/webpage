@@ -1,20 +1,22 @@
+enable f16;
+
 struct Params {
     simulation_size: vec2u,
     mouse_radius: f32,
-    dt: f32,
+    dt: f16,
 }
 
 // simulation_size = number of simulation cells in each axis (points for which we store a velocity etc.)
 
 struct CoordinateConstants {
     aspect_ratio: f32,
-    half_r_sum_r_sq_delta_x_r_sq_delta_y: f32, // 1 / (2 * (1 / delta_x^2 + 1 / delta_y^2))
-    half_div_sq_delta_y_sum_sq_delta_x_sq_delta_y: f32, // delta_y^2 / (2 * (delta_x^2 + delta_y^2))
-    half_div_sq_delta_x_sum_sq_delta_x_sq_delta_y: f32, // delta_x^2 / (2 * (delta_x^2 + delta_y^2))
     r_delta_x: f32, // 1 / delta_x
     r_delta_y: f32, // 1 / delta_y
-    half_r_delta_x: f32, // 1 / (2 * delta_x)
-    half_r_delta_y: f32, // 1 / (2 * delta_y)
+    half_r_sum_r_sq_delta_x_r_sq_delta_y: f16, // 1 / (2 * (1 / delta_x^2 + 1 / delta_y^2))
+    half_div_sq_delta_y_sum_sq_delta_x_sq_delta_y: f16, // delta_y^2 / (2 * (delta_x^2 + delta_y^2))
+    half_div_sq_delta_x_sum_sq_delta_x_sq_delta_y: f16, // delta_x^2 / (2 * (delta_x^2 + delta_y^2))
+    half_r_delta_x: f16, // 1 / (2 * delta_x)
+    half_r_delta_y: f16, // 1 / (2 * delta_y)
 }
 
 // half_r_delta_x = 1/(2 * delta_x) = simulation_size.x / (2 * aspect_ratio)
@@ -39,31 +41,31 @@ var<uniform> c: CoordinateConstants;
 // they are 0-based, however. We only add the +1 when we really access data.
 
 @group(1) @binding(0)
-var<storage, read_write> u0: array<vec2f>;
+var<storage, read_write> u0: array<vec2<f16>>;
 
 @group(1) @binding(1)
-var<storage, read_write> u1: array<vec2f>;
+var<storage, read_write> u1: array<vec2<f16>>;
 
 @group(2) @binding(0)
-var<storage, read_write> s0: array<f32>;
+var<storage, read_write> s0: array<f16>;
 
 @group(2) @binding(1)
-var<storage, read_write> s1: array<f32>;
+var<storage, read_write> s1: array<f16>;
 
 @group(3) @binding(0)
-var<storage, read_write> p0: array<f32>;
+var<storage, read_write> p0: array<f16>;
 
 @group(3) @binding(1)
-var<storage, read_write> p1: array<f32>;
+var<storage, read_write> p1: array<f16>;
 
 @group(3) @binding(2)
-var<storage, read_write> u_divergence: array<f32>;
+var<storage, read_write> u_divergence: array<f16>;
 
-fn mix2d_f(a00: f32, a01: f32, a10: f32, a11: f32, w: vec2f) -> f32 {
+fn mix2d_f(a00: f16, a01: f16, a10: f16, a11: f16, w: vec2<f16>) -> f16 {
     return mix(mix(a00, a01, w.y), mix(a10, a11, w.y), w.x);
 }
 
-fn mix2d_vec2f(a00: vec2f, a01: vec2f, a10: vec2f, a11: vec2f, w: vec2f) -> vec2f {
+fn mix2d_vec2f16(a00: vec2<f16>, a01: vec2<f16>, a10: vec2<f16>, a11: vec2<f16>, w: vec2<f16>) -> vec2<f16> {
     return mix(mix(a00, a01, w.y), mix(a10, a11, w.y), w.x);
 }
 
@@ -83,9 +85,9 @@ fn simulation_coords(normalized_coords: vec2f) -> vec2f {
     );
 }
 
-fn interpolate_s0(coords: vec2f) -> f32 {
+fn interpolate_s0(coords: vec2f) -> f16 {
     let upper_left = vec2u(coords + vec2f(0.5, 0.5));
-    let mix_weight = coords + vec2f(0.5, 0.5) - vec2f(upper_left);
+    let mix_weight = vec2<f16>(coords + vec2f(0.5, 0.5) - vec2f(upper_left));
 
     let width = params.simulation_size.x + 2;
     let i = upper_left.y * width + upper_left.x;
@@ -94,14 +96,14 @@ fn interpolate_s0(coords: vec2f) -> f32 {
 }
 
 // one cannot pass arrays to functions
-fn interpolate_u0(coords: vec2f) -> vec2f {
+fn interpolate_u0(coords: vec2f) -> vec2<f16> {
     let upper_left = vec2u(coords + vec2f(0.5, 0.5));
-    let mix_weight = coords + vec2f(0.5, 0.5) - vec2f(upper_left);
+    let mix_weight = vec2<f16>(coords + vec2f(0.5, 0.5) - vec2f(upper_left));
 
     let width = params.simulation_size.x + 2;
     let i = upper_left.y * width + upper_left.x;
 
-    return mix2d_vec2f(u0[i], u0[i + width], u0[i + 1], u0[i + width + 1], mix_weight);
+    return mix2d_vec2f16(u0[i], u0[i + width], u0[i + 1], u0[i + width + 1], mix_weight);
 }
 
 // The old data is always in s0 or u0, respectively. Whether the new data
@@ -116,7 +118,7 @@ fn add_force(
         let d = distance(nc, mouse.position);
         if d < params.mouse_radius {
             let i = (id.y + 1) * (params.simulation_size.x + 2) + id.x + 1;
-            u0[i] += 2.0 * (f32(params.mouse_radius - d) / params.mouse_radius) * mouse.displacement;
+            u0[i] += 2.0 * vec2<f16>(((params.mouse_radius - d) / params.mouse_radius) * mouse.displacement);
         }
     }
 }
@@ -154,7 +156,7 @@ fn sub_pressure_gradient(@builtin(global_invocation_id) id: vec3u) {
 
     let del_x = (p0[i + 1] - p0[i - 1]) * c.half_r_delta_x;
     let del_y = (p0[i + width] - p0[i - width]) * c.half_r_delta_y;
-    u0[i] -= vec2f(del_x, del_y);
+    u0[i] -= vec2<f16>(del_x, del_y);
 }
 
 @compute @workgroup_size(64)
@@ -195,27 +197,12 @@ fn velocity_boundary_v(@builtin(global_invocation_id) id: vec3u) {
 
 @compute @workgroup_size(8, 8)
 fn add_source(@builtin(global_invocation_id) id: vec3u) {
-    // let nc = normalized_coords(id.xy);
-    // let row = u32(nc.y * f32(12));
-    // let residue = nc.y * f32(12) - f32(row);
-
-    // let source_nc = vec2f(params.tracer_diam, params.tracer_diam * (f32(2 * row) + 1));
-    // let d = distance(nc, source_nc);
-    // if 2.0 * d < params.tracer_diam {
-    //     let value = textureLoad(s0, id.xy).r;
-    //     textureStore(s0, id.xy, vec4f(value + f32(params.tracer_diam - 2.0 * d) / (10.0 * params.tracer_diam), 0.0, 0.0, 0.0));
-    // }
-
-    // The sources of the tracers are at (tracer_diam, tracer_diam * n)
-    // for integer n \ge 1.
-    // Check whether the current simulation cell
-
     if mouse.is_down == 1 {
         let nc = normalized_coords(id.xy);
         let d = distance(nc, mouse.position);
         if d < params.mouse_radius {
             let i = (id.y + 1) * (params.simulation_size.x + 2) + id.x + 1;
-            s0[i] += f32(params.mouse_radius - d) / (10.0 * params.mouse_radius);
+            s0[i] += f16((params.mouse_radius - d) / (10.0 * params.mouse_radius));
         }
     }
 }
@@ -266,8 +253,8 @@ fn trace_particle(initial_position: vec2u) -> vec2f {
 
     let nc = normalized_coords(initial_position);
     let k1 = -params.dt * u0[(initial_position.y + 1) * (params.simulation_size.x + 2) + initial_position.x + 1];
-    let k2 = -params.dt * interpolate_u0(simulation_coords(nc + 0.5 * k1));
-    return max(vec2f(0.0, 0.0), min(vec2f(c.aspect_ratio, 1.0), nc + k2));
+    let k2 = -params.dt * interpolate_u0(simulation_coords(nc + 0.5 * vec2f(k1)));
+    return max(vec2f(0.0, 0.0), min(vec2f(c.aspect_ratio, 1.0), nc + vec2f(k2)));
 }
 
 @compute @workgroup_size(8,8)
