@@ -1,5 +1,5 @@
 const SIM_WIDTH = 1024;
-const SIM_HEIGHT = 512;
+const SIM_HEIGHT = 1024;
 
 const WG_X = SIM_WIDTH / 8;
 const WG_Y = SIM_HEIGHT / 8;
@@ -65,11 +65,11 @@ async function init() {
   });
 
   let computeParamsBuffer = device.createBuffer({
-    size: 16,
+    size: 32,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
 
-  const computeParams = new ArrayBuffer(16);
+  const computeParams = new ArrayBuffer(32);
   const computeParamsView = new DataView(computeParams);
   computeParamsView.setUint32(0, SIM_WIDTH, true);
   computeParamsView.setUint32(4, SIM_HEIGHT, true);
@@ -273,6 +273,7 @@ async function init() {
   const subPressureGradientPipeline = pipeline("sub_pressure_gradient");
   const addSourcePipeline = pipeline("add_source");
   const transportScalarFieldPipeline = pipeline("transport_scalar_field");
+  const dissipatePipeline = pipeline("dissipate");
 
   // --- render stuff ---
 
@@ -349,6 +350,17 @@ async function init() {
     layout: renderPipelineLayout,
   });
 
+  const commandEncoder = device.createCommandEncoder();
+  const computePassEncoder = commandEncoder.beginComputePass();
+  computePassEncoder.setPipeline(pipeline("init_dye"));
+  computePassEncoder.setBindGroup(0, paramsBindGroup);
+  computePassEncoder.setBindGroup(1, uBindGroups[0]);
+  computePassEncoder.setBindGroup(2, sBindGroups[0]);
+  computePassEncoder.setBindGroup(3, pBindGroups[0]);
+  computePassEncoder.dispatchWorkgroups(...WORKGROUPS);
+  computePassEncoder.end();
+  device.queue.submit([commandEncoder.finish()]);
+
   return {
     device: device,
     bindGroups: {
@@ -366,6 +378,7 @@ async function init() {
       subPressureGradient: subPressureGradientPipeline,
       addSource: addSourcePipeline,
       transportScalarField: transportScalarFieldPipeline,
+      dissipate: dissipatePipeline,
       render: renderPipeline,
       boundary: {
         velocity: {
@@ -407,6 +420,7 @@ let cnt = 0;
 function frame(time, state) {
   const dt = last_time === null ? 0 : time - last_time;
   last_time = time;
+  console.log(dt);
 
   cnt++;
 
@@ -435,6 +449,7 @@ function frame(time, state) {
   // --- compute part ---
 
   state.computeParamsView.setFloat32(12, dt * 0.2, true);
+  state.computeParamsView.setFloat32(16, dt / 3141, true);
   state.device.queue.writeBuffer(
     state.computeParamsBuffer,
     0,
@@ -479,35 +494,38 @@ function frame(time, state) {
 
   set_boundary("velocity");
   computePassEncoder.setPipeline(state.pipelines.transportVelocity);
-  computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
+  computePassEncoder.dispatchWorkgroups(...WORKGROUPS);
   state.parity.u ^= 1;
   computePassEncoder.setBindGroup(1, state.bindGroups.u[state.parity.u]);
 
   set_boundary("velocity");
   computePassEncoder.setPipeline(state.pipelines.divergence);
-  computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
+  computePassEncoder.dispatchWorkgroups(...WORKGROUPS);
 
   // We "warm-start" from the previous pressure. One could consider doing more iterations
   // if a force is currently active.
   for (let i = 0; i < 60; ++i) {
     set_boundary("pressure");
     computePassEncoder.setPipeline(state.pipelines.jacobiPressure);
-    computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
+    computePassEncoder.dispatchWorkgroups(...WORKGROUPS);
     state.parity.p ^= 1;
     computePassEncoder.setBindGroup(3, state.bindGroups.p[state.parity.p]);
   }
 
   set_boundary("pressure");
   computePassEncoder.setPipeline(state.pipelines.subPressureGradient);
-  computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
+  computePassEncoder.dispatchWorkgroups(...WORKGROUPS);
 
   computePassEncoder.setPipeline(state.pipelines.addSource);
-  computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
+  computePassEncoder.dispatchWorkgroups(...WORKGROUPS);
 
   computePassEncoder.setPipeline(state.pipelines.transportScalarField);
-  computePassEncoder.dispatchWorkgroups(WG_X, WG_Y);
+  computePassEncoder.dispatchWorkgroups(...WORKGROUPS);
   state.parity.s ^= 1;
   computePassEncoder.setBindGroup(2, state.bindGroups.s[state.parity.s]);
+
+  computePassEncoder.setPipeline(state.pipelines.dissipate);
+  computePassEncoder.dispatchWorkgroups(...WORKGROUPS);
 
   computePassEncoder.end();
 

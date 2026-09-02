@@ -2,6 +2,7 @@ struct Params {
     simulation_size: vec2u,
     mouse_radius: f32,
     dt: f32,
+    dissipation_rate: f32,
 }
 
 // simulation_size = number of simulation cells in each axis (points for which we store a velocity etc.)
@@ -204,7 +205,7 @@ fn add_source(@builtin(global_invocation_id) id: vec3u) {
         let d = distance(nc, mouse.position);
         if d < params.mouse_radius {
             let i = (id.y + 1) * (params.simulation_size.x + 2) + id.x + 1;
-            s0[i] += vec4f(0.5, 0.9, 0.3, 1.0) * (params.mouse_radius - d) / (10.0 * params.mouse_radius);
+            s0[i] -= vec4f(0.5, 0.0, 0.2, 0.0) * (params.mouse_radius - d) / (10.0 * params.mouse_radius);
         }
     }
 }
@@ -259,6 +260,23 @@ fn trace_particle(initial_position: vec2u) -> vec2f {
     return max(vec2f(0.0, 0.0), min(vec2f(c.aspect_ratio, 1.0), nc + k2));
 }
 
-@compute @workgroup_size(8,8)
+@compute @workgroup_size(8, 8)
 fn diffuse_velocity() {
+}
+
+@compute @workgroup_size(8, 8)
+fn init_dye(@builtin(global_invocation_id) id: vec3u) {
+    let i = (id.y + 1) * (params.simulation_size.x + 2) + id.x + 1;
+    s0[i].r = 1.0;
+    s0[i].g = 1.0;
+    s0[i].b = 1.0;
+    s0[i].a = 1.0;
+}
+
+@compute @workgroup_size(8, 8)
+fn dissipate(@builtin(global_invocation_id) id: vec3u) {
+    let i = (id.y + 1) * (params.simulation_size.x + 2) + id.x + 1;
+    s0[i].r += (1.0 - s0[i].r) * params.dissipation_rate;
+    s0[i].g += (1.0 - s0[i].g) * params.dissipation_rate;
+    s0[i].b += (1.0 - s0[i].b) * params.dissipation_rate;
 }
