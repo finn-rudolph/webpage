@@ -2,11 +2,11 @@ const simulation_width = 512;
 const simulation_height = 512;
 
 const num_workgroups = [simulation_width / 8, simulation_height / 8];
-const jacobi_iterations = 30;
+const jacobi_iterations = 40;
 
 const mouse_radius = 0.05; // radius of the mouse force
 
-const viscosity = 0.01;
+const viscosity = 0.0000001;
 const dissipation_rate = 0.001;
 const time_scale = 0.1; // the physical time step is `time_scale` * [browser time step in ms]
 
@@ -407,7 +407,6 @@ let cnt = 0;
 function frame(time, state) {
   const js_dt = prev_time === null ? 0 : time - prev_time;
   prev_time = time;
-  console.log(js_dt);
 
   cnt++;
 
@@ -453,17 +452,20 @@ function frame(time, state) {
     true,
   );
 
+  // console.log(laplace_diagonal);
   const diffuse_denom = 1.0 - viscosity * dt * laplace_diagonal;
-  console.log(diffuse_denom);
+  // console.log(diffuse_denom);
 
-  state.computeConstView.setFloat32(32, 1 / diffuse_denom);
+  state.computeConstView.setFloat32(32, 1 / diffuse_denom, true);
   state.computeConstView.setFloat32(
     36,
     (viscosity * dt * sq_r_delta_x) / diffuse_denom,
+    true,
   );
   state.computeConstView.setFloat32(
     40,
     (viscosity * dt * sq_r_delta_y) / diffuse_denom,
+    true,
   );
 
   state.computeConstView.setFloat32(48, r_delta_x, true);
@@ -517,6 +519,14 @@ function frame(time, state) {
   set_boundary("pressure");
   computePassEncoder.setPipeline(state.pipelines.subPressureGradient);
   computePassEncoder.dispatchWorkgroups(...num_workgroups);
+
+  for (let i = 0; i < 10; ++i) {
+    set_boundary("velocity");
+    computePassEncoder.setPipeline(state.pipelines.jacobiDiffuse);
+    computePassEncoder.dispatchWorkgroups(...num_workgroups);
+    state.parity.u ^= 1;
+    computePassEncoder.setBindGroup(1, state.bindGroups.u[state.parity.u]);
+  }
 
   computePassEncoder.setPipeline(state.pipelines.addSource);
   computePassEncoder.dispatchWorkgroups(...num_workgroups);
