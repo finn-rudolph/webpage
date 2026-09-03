@@ -6,7 +6,7 @@ const jacobi_iterations = 40;
 
 const mouse_radius = 0.05; // radius of the mouse force
 
-const viscosity = 0.0000001;
+const viscosity = 0.00001;
 const dissipation_rate = 0.001;
 const time_scale = 0.1; // the physical time step is `time_scale` * [browser time step in ms]
 
@@ -14,17 +14,39 @@ let canvas = document.getElementById("fluidCanvas");
 console.log(`canvas.width = ${canvas.width}`);
 console.log(`canvas.height = ${canvas.height}`);
 
-let mouseParams = new ArrayBuffer(24);
+let mouseParams = new ArrayBuffer(48);
+let mouseIsDown = false;
 let mouseView = new DataView(mouseParams);
+let colorVectors = {
+  r: { x: 1.0, y: 0.0 },
+  g: { x: -0.5, y: 0.5 * Math.sqrt(3) },
+  b: { x: -0.5, y: -0.5 * Math.sqrt(3) },
+};
 
+// TODO; handle mouse exiting the canvas.
 canvas.addEventListener("pointerdown", (event) => {
-  mouseView.setUint32(16, 1, true);
+  mouseIsDown = true;
   mouseView.setFloat32(0, event.offsetX / canvas.clientHeight, true); // this is correct (normalized coords)
   mouseView.setFloat32(4, event.offsetY / canvas.clientHeight, true);
+
+  const theta = Math.random() * 2 * Math.PI;
+  const cos = Math.cos(theta);
+  const sin = Math.sin(theta);
+  colorVectors = {
+    r: { x: cos, y: sin },
+    g: {
+      x: 0.5 * (-cos - Math.sqrt(3) * sin),
+      y: 0.5 * (-sin + Math.sqrt(3) * cos),
+    },
+    b: {
+      x: 0.5 * (-cos + Math.sqrt(3) * sin),
+      y: 0.5 * (-sin - Math.sqrt(3) * cos),
+    },
+  };
 });
 
 canvas.addEventListener("pointerup", () => {
-  mouseView.setUint32(16, 0, true);
+  mouseIsDown = false;
 });
 
 // TODO: if the simulation feels laggy, store an array of movements and apply forces
@@ -63,16 +85,16 @@ async function init() {
   // --- params and mouse bind group ---
 
   const mouseBuffer = device.createBuffer({
-    size: 32,
+    size: 48,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
 
   let computeConstBuffer = device.createBuffer({
-    size: 80,
+    size: 96,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
 
-  const computeConst = new ArrayBuffer(80);
+  const computeConst = new ArrayBuffer(96);
   const computeConstView = new DataView(computeConst);
   computeConstView.setUint32(0, simulation_width, true);
   computeConstView.setUint32(4, simulation_height, true);
@@ -399,6 +421,10 @@ async function init() {
   };
 }
 
+function dot(a, b) {
+  return a.x * b.x + a.y * b.y;
+}
+
 let prev_time = null;
 let prev_mouse = { x: 0, y: 0 };
 let cnt = 0;
@@ -410,14 +436,22 @@ function frame(time, state) {
 
   cnt++;
 
-  mouseView.setFloat32(8, mouseView.getFloat32(0, true) - prev_mouse.x, true);
-  mouseView.setFloat32(12, mouseView.getFloat32(4, true) - prev_mouse.y, true);
-  mouseView.setFloat32(20, mouse_radius, true);
-
+  const displacement = {
+    x: mouseView.getFloat32(0, true) - prev_mouse.x,
+    y: mouseView.getFloat32(4, true) - prev_mouse.y,
+  };
+  mouseView.setFloat32(8, displacement.x, true);
+  mouseView.setFloat32(12, displacement.y, true);
+  mouseView.setFloat32(32, mouse_radius, true);
   prev_mouse = {
     x: mouseView.getFloat32(0, true),
     y: mouseView.getFloat32(4, true),
   };
+
+  mouseView.setFloat32(16, dot(displacement, colorVectors.r), true);
+  mouseView.setFloat32(20, dot(displacement, colorVectors.g), true);
+  mouseView.setFloat32(24, dot(displacement, colorVectors.b), true);
+
   state.device.queue.writeBuffer(state.mouseBuffer, 0, mouseParams);
 
   const dpr = window.devicePixelRatio;
@@ -438,7 +472,7 @@ function frame(time, state) {
   const sq_r_delta_y = r_delta_y * r_delta_y;
   const sq_delta_x = 1.0 / sq_r_delta_x;
   const sq_delta_y = 1.0 / sq_r_delta_y;
-  const laplace_diagonal = -2 * (r_delta_x * r_delta_x + r_delta_y * r_delta_y);
+  const laplace_diagonal = -2 * (sq_r_delta_x + sq_r_delta_y);
 
   state.computeConstView.setFloat32(16, 1 / laplace_diagonal, true);
   state.computeConstView.setFloat32(
@@ -452,9 +486,7 @@ function frame(time, state) {
     true,
   );
 
-  // console.log(laplace_diagonal);
   const diffuse_denom = 1.0 - viscosity * dt * laplace_diagonal;
-  // console.log(diffuse_denom);
 
   state.computeConstView.setFloat32(32, 1 / diffuse_denom, true);
   state.computeConstView.setFloat32(
@@ -473,6 +505,7 @@ function frame(time, state) {
   state.computeConstView.setFloat32(56, 0.5 * r_delta_x, true);
   state.computeConstView.setFloat32(60, 0.5 * r_delta_y, true);
   state.computeConstView.setFloat32(64, aspect_ratio, true);
+  state.computeConstView.setFloat32(80, 1 / (r_delta_x * r_delta_y), true);
 
   state.device.queue.writeBuffer(
     state.computeConstBuffer,
@@ -493,8 +526,10 @@ function frame(time, state) {
     computePassEncoder.dispatchWorkgroups(simulation_height / 64);
   };
 
-  computePassEncoder.setPipeline(state.pipelines.addForce);
-  computePassEncoder.dispatchWorkgroups(...num_workgroups);
+  if (mouseIsDown) {
+    computePassEncoder.setPipeline(state.pipelines.addForce);
+    computePassEncoder.dispatchWorkgroups(...num_workgroups);
+  }
 
   set_boundary("velocity");
   computePassEncoder.setPipeline(state.pipelines.transportVelocity);
@@ -528,8 +563,10 @@ function frame(time, state) {
     computePassEncoder.setBindGroup(1, state.bindGroups.u[state.parity.u]);
   }
 
-  computePassEncoder.setPipeline(state.pipelines.addSource);
-  computePassEncoder.dispatchWorkgroups(...num_workgroups);
+  if (mouseIsDown) {
+    computePassEncoder.setPipeline(state.pipelines.addSource);
+    computePassEncoder.dispatchWorkgroups(...num_workgroups);
+  }
 
   computePassEncoder.setPipeline(state.pipelines.transportScalarField);
   computePassEncoder.dispatchWorkgroups(...num_workgroups);

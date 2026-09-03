@@ -36,5 +36,5 @@ fn vertex(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
 @fragment
 fn fragment(@builtin(position) position: vec4f) -> @location(0) vec4f {
     let coords = simulation_coords(position.xy);
-    return interpolate_s(coords);
+    return max(vec4f(0.5, 0.5, 0.5, 0.6), interpolate_s(coords));
 }

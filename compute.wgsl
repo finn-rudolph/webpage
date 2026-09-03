@@ -19,7 +19,8 @@ struct Constants {
     aspect_ratio: f32,                              // 64
     viscosity: f32,                                 // 68
     dissipation_rate: f32,                          // 72
-    dt: f32,
+    dt: f32,                                        // 76
+    delta_x_delta_y: f32,                           // 80
 }
 
 // simulation_size = number of simulation cells in each axis (points for which we store a velocity etc.)
@@ -27,13 +28,14 @@ struct Constants {
 struct Mouse {
     position: vec2f, // in normalized coords
     displacement: vec2f, // already scaled by dt
-    is_down: u32, // just a bool
+    color: vec4f,
     radius: f32,
 }
 
 @group(0) @binding(0)
 var<uniform> mouse: Mouse;
-
+// TODO: account for spacing between cells, so that the total amount of dye is
+// independent of the screen and simulation
 @group(0) @binding(1)
 var<uniform> c: Constants;
 
@@ -119,12 +121,10 @@ fn interpolate_u0(coords: vec2f) -> vec2f {
 fn add_force(
     @builtin(global_invocation_id) id: vec3u,
 ) {
-    if mouse.is_down == 1 {
-        let nc = normalized_coords(id.xy);
-        let d = distance(nc, mouse.position);
-        if d < mouse.radius {
-            u0[buffer_index(id.xy)] += (f32(mouse.radius - d) / mouse.radius) * mouse.displacement / (10.0 * c.dt);
-        }
+    let nc = normalized_coords(id.xy);
+    let d = distance(nc, mouse.position);
+    if d < mouse.radius {
+        u0[buffer_index(id.xy)] += (f32(mouse.radius - d) / mouse.radius) * mouse.displacement;
     }
 }
 
@@ -203,14 +203,12 @@ fn velocity_boundary_v(@builtin(global_invocation_id) id: vec3u) {
 
 @compute @workgroup_size(8, 8)
 fn add_source(@builtin(global_invocation_id) id: vec3u) {
-    // TODO: account for spacing between cells, so that the total amount of dye is
-    // independent of the screen and simulation
-    if mouse.is_down == 1 {
-        let nc = normalized_coords(id.xy);
-        let d = distance(nc, mouse.position);
-        if d < mouse.radius {
-            s0[buffer_index(id.xy)] -= vec4f(0.5, 0.0, 0.2, 0.0) * (mouse.radius - d) / (10.0 * mouse.radius);
-        }
+    let nc = normalized_coords(id.xy);
+    let d = distance(nc, mouse.position);
+    if d < mouse.radius {
+        // the delta_x_delta_y ensures that the total amount of dye added does not depend on the size
+        // of the simulation grid.
+        s0[buffer_index(id.xy)] -= c.dt * (10000000 * c.delta_x_delta_y) * mouse.color * (mouse.radius - d) / mouse.radius;
     }
 }
 
