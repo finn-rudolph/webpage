@@ -1,14 +1,14 @@
 const simulation_width = 512;
-const simulation_height = 512;
+const simulation_height = 256;
 
 const num_workgroups = [simulation_width / 8, simulation_height / 8];
-const jacobi_iterations = 40;
+const jacobi_iterations = 60;
 
 const mouse_radius = 0.05; // radius of the mouse force
 
 const viscosity = 0.00001;
-const dissipation_rate = 0.001;
-const time_scale = 0.1; // the physical time step is `time_scale` * [browser time step in ms]
+const dissipation_rate = 0.0005;
+const time_scale = 0.2; // the physical time step is `time_scale` * [browser time step in ms]
 
 let canvas = document.getElementById("fluidCanvas");
 console.log(`canvas.width = ${canvas.width}`);
@@ -442,15 +442,15 @@ function frame(time, state) {
   };
   mouseView.setFloat32(8, displacement.x, true);
   mouseView.setFloat32(12, displacement.y, true);
-  mouseView.setFloat32(32, mouse_radius, true);
+  mouseView.setFloat32(32, mouse_radius * mouse_radius, true);
   prev_mouse = {
     x: mouseView.getFloat32(0, true),
     y: mouseView.getFloat32(4, true),
   };
 
-  mouseView.setFloat32(16, dot(displacement, colorVectors.r), true);
-  mouseView.setFloat32(20, dot(displacement, colorVectors.g), true);
-  mouseView.setFloat32(24, dot(displacement, colorVectors.b), true);
+  mouseView.setFloat32(16, 0.4, true);
+  mouseView.setFloat32(20, 0.2, true);
+  mouseView.setFloat32(24, 0.0, true);
 
   state.device.queue.writeBuffer(state.mouseBuffer, 0, mouseParams);
 
@@ -505,7 +505,6 @@ function frame(time, state) {
   state.computeConstView.setFloat32(56, 0.5 * r_delta_x, true);
   state.computeConstView.setFloat32(60, 0.5 * r_delta_y, true);
   state.computeConstView.setFloat32(64, aspect_ratio, true);
-  state.computeConstView.setFloat32(80, 1 / (r_delta_x * r_delta_y), true);
 
   state.device.queue.writeBuffer(
     state.computeConstBuffer,
@@ -555,13 +554,13 @@ function frame(time, state) {
   computePassEncoder.setPipeline(state.pipelines.subPressureGradient);
   computePassEncoder.dispatchWorkgroups(...num_workgroups);
 
-  for (let i = 0; i < 10; ++i) {
-    set_boundary("velocity");
-    computePassEncoder.setPipeline(state.pipelines.jacobiDiffuse);
-    computePassEncoder.dispatchWorkgroups(...num_workgroups);
-    state.parity.u ^= 1;
-    computePassEncoder.setBindGroup(1, state.bindGroups.u[state.parity.u]);
-  }
+  // for (let i = 0; i < 10; ++i) {
+  //   set_boundary("velocity");
+  //   computePassEncoder.setPipeline(state.pipelines.jacobiDiffuse);
+  //   computePassEncoder.dispatchWorkgroups(...num_workgroups);
+  //   state.parity.u ^= 1;
+  //   computePassEncoder.setBindGroup(1, state.bindGroups.u[state.parity.u]);
+  // }
 
   if (mouseIsDown) {
     computePassEncoder.setPipeline(state.pipelines.addSource);

@@ -20,7 +20,6 @@ struct Constants {
     viscosity: f32,                                 // 68
     dissipation_rate: f32,                          // 72
     dt: f32,                                        // 76
-    delta_x_delta_y: f32,                           // 80
 }
 
 // simulation_size = number of simulation cells in each axis (points for which we store a velocity etc.)
@@ -29,7 +28,7 @@ struct Mouse {
     position: vec2f, // in normalized coords
     displacement: vec2f, // already scaled by dt
     color: vec4f,
-    radius: f32,
+    sq_radius: f32,
 }
 
 @group(0) @binding(0)
@@ -122,9 +121,9 @@ fn add_force(
     @builtin(global_invocation_id) id: vec3u,
 ) {
     let nc = normalized_coords(id.xy);
-    let d = distance(nc, mouse.position);
-    if d < mouse.radius {
-        u0[buffer_index(id.xy)] += (f32(mouse.radius - d) / mouse.radius) * mouse.displacement;
+    let sq_d = dot(nc - mouse.position, nc - mouse.position);
+    if sq_d < mouse.sq_radius {
+        u0[buffer_index(id.xy)] += (f32(mouse.sq_radius - sq_d) / mouse.sq_radius) * mouse.displacement * 0.1;
     }
 }
 
@@ -133,7 +132,8 @@ fn transport_velocity(
     @builtin(global_invocation_id) id: vec3u,
 ) {
     let previous_position = simulation_coords(trace_particle(id.xy));
-    u1[buffer_index(id.xy)] = interpolate_u0(previous_position);
+    // the dissipation is not physical but ensures that the velocity field eventually calms down.
+    u1[buffer_index(id.xy)] = interpolate_u0(previous_position) * (1 - c.dissipation_rate);
 }
 
 @compute @workgroup_size(8, 8)
@@ -204,11 +204,11 @@ fn velocity_boundary_v(@builtin(global_invocation_id) id: vec3u) {
 @compute @workgroup_size(8, 8)
 fn add_source(@builtin(global_invocation_id) id: vec3u) {
     let nc = normalized_coords(id.xy);
-    let d = distance(nc, mouse.position);
-    if d < mouse.radius {
+    let sq_d = dot(nc - mouse.position, nc - mouse.position);
+    if sq_d < mouse.sq_radius {
         // the delta_x_delta_y ensures that the total amount of dye added does not depend on the size
         // of the simulation grid.
-        s0[buffer_index(id.xy)] -= c.dt * (10000000 * c.delta_x_delta_y) * mouse.color * (mouse.radius - d) / mouse.radius;
+        s0[buffer_index(id.xy)] -= 0.1 * mouse.color * (mouse.sq_radius - sq_d) / mouse.sq_radius;
     }
 }
 
