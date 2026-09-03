@@ -1,27 +1,27 @@
-struct Params {
-    pixel_size: vec2u, // number of physical pixels
-    simulation_size: vec2u,
+struct Constants {
+    pixel_res: vec2u, // number of physical pixels
+    dye_res: vec2u,
 }
 
 @group(0) @binding(0)
 var<storage, read> s: array<vec4f>;
 
 @group(0) @binding(1)
-var<uniform> params: Params;
+var<uniform> c: Constants;
 
 fn mix2d_vec4f(a00: vec4f, a01: vec4f, a10: vec4f, a11: vec4f, w: vec2f) -> vec4f {
     return mix(mix(a00, a01, w.y), mix(a10, a11, w.y), w.x);
 }
 
 fn simulation_coords(pixel_coords: vec2f) -> vec2f {
-    return vec2f(params.simulation_size) * (pixel_coords / vec2f(f32(params.pixel_size.x), f32(params.pixel_size.y)));
+    return vec2f(c.dye_res) * (pixel_coords / vec2f(f32(c.pixel_res.x), f32(c.pixel_res.y)));
 }
 
 fn interpolate_s(coords: vec2f) -> vec4f {
     let upper_left = vec2u(coords + vec2f(0.5, 0.5));
     let mix_weight = coords + vec2f(0.5, 0.5) - vec2f(upper_left);
 
-    let width = params.simulation_size.x + 2;
+    let width = c.dye_res.x + 2;
     let i = upper_left.y * width + upper_left.x;
 
     return mix2d_vec4f(s[i], s[i + width], s[i + 1], s[i + width + 1], mix_weight);

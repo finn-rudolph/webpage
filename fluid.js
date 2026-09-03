@@ -1,14 +1,16 @@
-const simulation_width = 512;
-const simulation_height = 512;
+const velocity_res = { x: 256, y: 256 };
+const dye_res = { x: 1024, y: 1024 };
 
-const num_workgroups = [simulation_width / 8, simulation_height / 8];
 const jacobi_iterations = 60;
 
 const mouse_radius = 0.05; // radius of the mouse force
 
-const viscosity = 0.00001;
-const dissipation_rate = 0.9999;
-const time_scale = 0.2; // the physical time step is `time_scale` * [browser time step in ms]
+const viscosity = 0.0;
+const dissipation_rate = 0.99;
+const time_scale = 0.1; // the physical time step is `time_scale` * [browser time step in ms]
+
+const velocity_workgroups = [velocity_res.x / 8, velocity_res.y / 8];
+const dye_workgroups = [dye_res.x / 8, dye_res.y / 8];
 
 let canvas = document.getElementById("fluidCanvas");
 console.log(`canvas.width = ${canvas.width}`);
@@ -17,11 +19,6 @@ console.log(`canvas.height = ${canvas.height}`);
 let mouseParams = new ArrayBuffer(48);
 let mouseIsDown = false;
 let mouseView = new DataView(mouseParams);
-let colorVectors = {
-  r: { x: 1.0, y: 0.0 },
-  g: { x: -0.5, y: 0.5 * Math.sqrt(3) },
-  b: { x: -0.5, y: -0.5 * Math.sqrt(3) },
-};
 
 const colors = [
   { r: 0.451, g: 0.776, b: 0.851 }, // #73C6D9
@@ -36,22 +33,6 @@ canvas.addEventListener("pointerdown", (event) => {
   mouseIsDown = true;
   mouseView.setFloat32(0, event.offsetX / canvas.clientHeight, true); // this is correct (normalized coords)
   mouseView.setFloat32(4, event.offsetY / canvas.clientHeight, true);
-
-  const theta = Math.random() * 2 * Math.PI;
-  const cos = Math.cos(theta);
-  const sin = Math.sin(theta);
-  colorVectors = {
-    r: { x: cos, y: sin },
-    g: {
-      x: 0.5 * (-cos - Math.sqrt(3) * sin),
-      y: 0.5 * (-sin + Math.sqrt(3) * cos),
-    },
-    b: {
-      x: 0.5 * (-cos + Math.sqrt(3) * sin),
-      y: 0.5 * (-sin - Math.sqrt(3) * cos),
-    },
-  };
-
   color = colors[Math.floor(Math.random() * 4)];
 });
 
@@ -59,8 +40,6 @@ canvas.addEventListener("pointerup", () => {
   mouseIsDown = false;
 });
 
-// TODO: if the simulation feels laggy, store an array of movements and apply forces
-// along the path.
 canvas.addEventListener("pointermove", (event) => {
   mouseView.setFloat32(0, event.offsetX / canvas.clientHeight, true);
   mouseView.setFloat32(4, event.offsetY / canvas.clientHeight, true);
@@ -106,12 +85,18 @@ async function init() {
 
   const computeConst = new ArrayBuffer(96);
   const computeConstView = new DataView(computeConst);
-  computeConstView.setUint32(0, simulation_width, true);
-  computeConstView.setUint32(4, simulation_height, true);
-  computeConstView.setUint32(8, simulation_width + 2, true);
-  computeConstView.setUint32(12, simulation_height + 2, true);
-  computeConstView.setFloat32(68, viscosity, true);
-  computeConstView.setFloat32(72, dissipation_rate, true);
+
+  computeConstView.setUint32(0, velocity_res.x, true);
+  computeConstView.setUint32(4, velocity_res.y, true);
+  computeConstView.setUint32(8, velocity_res.x + 2, true);
+  computeConstView.setUint32(12, velocity_res.y + 2, true);
+
+  computeConstView.setUint32(24, dye_res.x, true);
+  computeConstView.setUint32(28, dye_res.y, true);
+  computeConstView.setUint32(32, dye_res.x + 2, true);
+  computeConstView.setUint32(36, dye_res.y + 2, true);
+
+  computeConstView.setFloat32(48, dissipation_rate, true);
 
   device.queue.writeBuffer(computeConstBuffer, 0, computeConst);
 
@@ -284,30 +269,20 @@ async function init() {
     });
   };
 
-  const addForcePipeline = pipeline("add_force");
-  const transportVelocityPipeline = pipeline("transport_velocity");
-  const divergencePipeline = pipeline("divergence");
-  const jacobiPressurePipeline = pipeline("jacobi_pressure");
-  const subPressureGradientPipeline = pipeline("sub_pressure_gradient");
-  const jacobiDiffusePipeline = pipeline("jacobi_diffuse");
-  const addSourcePipeline = pipeline("add_source");
-  const transportScalarFieldPipeline = pipeline("transport_scalar_field");
-  const dissipatePipeline = pipeline("dissipate");
-
   // --- render stuff ---
 
-  let renderParamsBuffer = device.createBuffer({
+  let renderConstBuffer = device.createBuffer({
     size: 16,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
 
-  const renderParams = new ArrayBuffer(16);
-  const renderParamsView = new DataView(renderParams);
-  renderParamsView.setUint32(0, canvas.width, true);
-  renderParamsView.setUint32(4, canvas.height, true);
-  renderParamsView.setUint32(8, simulation_width, true);
-  renderParamsView.setUint32(12, simulation_height, true);
-  device.queue.writeBuffer(renderParamsBuffer, 0, renderParams);
+  const renderConst = new ArrayBuffer(16);
+  const renderConstView = new DataView(renderConst);
+  renderConstView.setUint32(0, canvas.width, true);
+  renderConstView.setUint32(4, canvas.height, true);
+  renderConstView.setUint32(8, dye_res.x, true);
+  renderConstView.setUint32(12, dye_res.y, true);
+  device.queue.writeBuffer(renderConstBuffer, 0, renderConst);
 
   let renderBindGroupEntries = [
     {
@@ -316,7 +291,7 @@ async function init() {
     },
     {
       binding: 1,
-      resource: { buffer: renderParamsBuffer },
+      resource: { buffer: renderConstBuffer },
     },
   ];
 
@@ -379,26 +354,17 @@ async function init() {
       render: renderBindGroups,
     },
     pipelines: {
-      addForce: addForcePipeline,
-      transportVelocity: transportVelocityPipeline,
-      divergence: divergencePipeline,
-      jacobiPressure: jacobiPressurePipeline,
-      subPressureGradient: subPressureGradientPipeline,
-      jacobiDiffuse: jacobiDiffusePipeline,
-      addSource: addSourcePipeline,
-      transportScalarField: transportScalarFieldPipeline,
-      dissipate: dissipatePipeline,
+      addForce: pipeline("add_force"),
+      transportVelocity: pipeline("transport_velocity"),
+      divergence: pipeline("divergence"),
+      jacobiPressure: pipeline("jacobi_pressure"),
+      subPressureGradient: pipeline("sub_pressure_gradient"),
+      addSource: pipeline("add_source"),
+      transportDye: pipeline("transport_dye"),
+      dissipate: pipeline("dissipate"),
+      velocityBoundary: pipeline("velocity_boundary"),
+      pressureBoundary: pipeline("pressure_boundary"),
       render: renderPipeline,
-      boundary: {
-        velocity: {
-          h: pipeline("velocity_boundary_h"),
-          v: pipeline("velocity_boundary_v"),
-        },
-        pressure: {
-          h: pipeline("pressure_boundary_h"),
-          v: pipeline("pressure_boundary_v"),
-        },
-      },
     },
     parity: {
       u: 0, // whether the current data lives in u0 or u1
@@ -409,9 +375,9 @@ async function init() {
     computeConstBuffer: computeConstBuffer,
     computeConst: computeConst,
     computeConstView: computeConstView,
-    renderParamsBuffer: renderParamsBuffer,
-    renderParams: renderParams,
-    renderParamsView: renderParamsView,
+    renderConstBuffer: renderConstBuffer,
+    renderConst: renderConst,
+    renderConstView: renderConstView,
     data: {
       u: uBuffer,
       s: sBuffer,
@@ -450,7 +416,6 @@ function frame(time, state) {
   mouseView.setFloat32(16, 1.0 - color.r, true);
   mouseView.setFloat32(20, 1.0 - color.g, true);
   mouseView.setFloat32(24, 1.0 - color.b, true);
-  // mouseView.setFloat32(28, -1.0, true);
 
   state.device.queue.writeBuffer(state.mouseBuffer, 0, mouseParams);
 
@@ -486,20 +451,6 @@ function frame(time, state) {
     true,
   );
 
-  const diffuse_denom = 1.0 - viscosity * dt * laplace_diagonal;
-
-  state.computeConstView.setFloat32(32, 1 / diffuse_denom, true);
-  state.computeConstView.setFloat32(
-    36,
-    (viscosity * dt * sq_r_delta_x) / diffuse_denom,
-    true,
-  );
-  state.computeConstView.setFloat32(
-    40,
-    (viscosity * dt * sq_r_delta_y) / diffuse_denom,
-    true,
-  );
-
   state.computeConstView.setFloat32(48, r_delta_x, true);
   state.computeConstView.setFloat32(52, r_delta_y, true);
   state.computeConstView.setFloat32(56, 0.5 * r_delta_x, true);
@@ -518,62 +469,63 @@ function frame(time, state) {
   computePassEncoder.setBindGroup(2, state.bindGroups.s[state.parity.s]);
   computePassEncoder.setBindGroup(3, state.bindGroups.p[state.parity.p]);
 
-  const set_boundary = (qty_name) => {
-    computePassEncoder.setPipeline(state.pipelines.boundary[qty_name].h);
-    computePassEncoder.dispatchWorkgroups(simulation_width / 64);
-    computePassEncoder.setPipeline(state.pipelines.boundary[qty_name].v);
-    computePassEncoder.dispatchWorkgroups(simulation_height / 64);
-  };
-
   if (mouseIsDown) {
     computePassEncoder.setPipeline(state.pipelines.addForce);
-    computePassEncoder.dispatchWorkgroups(...num_workgroups);
+    computePassEncoder.dispatchWorkgroups(...velocity_workgroups);
   }
 
-  set_boundary("velocity");
+  computePassEncoder.setPipeline(state.pipelines.velocityBoundary);
+  computePassEncoder.dispatchWorkgroups(
+    max(velocity_res.x, velocity_res.y) / 64,
+  );
+
   computePassEncoder.setPipeline(state.pipelines.transportVelocity);
-  computePassEncoder.dispatchWorkgroups(...num_workgroups);
+  computePassEncoder.dispatchWorkgroups(...velocity_workgroups);
   state.parity.u ^= 1;
   computePassEncoder.setBindGroup(1, state.bindGroups.u[state.parity.u]);
 
-  set_boundary("velocity");
+  computePassEncoder.setPipeline(state.pipelines.velocityBoundary);
+  computePassEncoder.dispatchWorkgroups(
+    max(velocity_res.x, velocity_res.y) / 64,
+  );
+
   computePassEncoder.setPipeline(state.pipelines.divergence);
-  computePassEncoder.dispatchWorkgroups(...num_workgroups);
+  computePassEncoder.dispatchWorkgroups(...velocity_workgroups);
 
   // We "warm-start" from the previous pressure. One could consider doing more iterations
   // if a force is currently active.
   for (let i = 0; i < jacobi_iterations; ++i) {
-    set_boundary("pressure");
+    computePassEncoder.setPipeline(state.pipelines.pressureBoundary);
+    computePassEncoder.dispatchWorkgroups(
+      max(velocity_res.x, velocity_res.y) / 64,
+    );
+
     computePassEncoder.setPipeline(state.pipelines.jacobiPressure);
-    computePassEncoder.dispatchWorkgroups(...num_workgroups);
+    computePassEncoder.dispatchWorkgroups(...velocity_workgroups);
     state.parity.p ^= 1;
     computePassEncoder.setBindGroup(3, state.bindGroups.p[state.parity.p]);
   }
 
-  set_boundary("pressure");
-  computePassEncoder.setPipeline(state.pipelines.subPressureGradient);
-  computePassEncoder.dispatchWorkgroups(...num_workgroups);
+  computePassEncoder.setPipeline(state.pipelines.pressureBoundary);
+  computePassEncoder.dispatchWorkgroups(
+    max(velocity_res.x, velocity_res.y) / 64,
+  );
 
-  // for (let i = 0; i < 10; ++i) {
-  //   set_boundary("velocity");
-  //   computePassEncoder.setPipeline(state.pipelines.jacobiDiffuse);
-  //   computePassEncoder.dispatchWorkgroups(...num_workgroups);
-  //   state.parity.u ^= 1;
-  //   computePassEncoder.setBindGroup(1, state.bindGroups.u[state.parity.u]);
-  // }
+  computePassEncoder.setPipeline(state.pipelines.subPressureGradient);
+  computePassEncoder.dispatchWorkgroups(...velocity_workgroups);
 
   if (mouseIsDown) {
     computePassEncoder.setPipeline(state.pipelines.addSource);
-    computePassEncoder.dispatchWorkgroups(...num_workgroups);
+    computePassEncoder.dispatchWorkgroups(...dye_workgroups);
   }
 
-  computePassEncoder.setPipeline(state.pipelines.transportScalarField);
-  computePassEncoder.dispatchWorkgroups(...num_workgroups);
+  computePassEncoder.setPipeline(state.pipelines.transportDye);
+  computePassEncoder.dispatchWorkgroups(...dye_workgroups);
   state.parity.s ^= 1;
   computePassEncoder.setBindGroup(2, state.bindGroups.s[state.parity.s]);
 
   computePassEncoder.setPipeline(state.pipelines.dissipate);
-  computePassEncoder.dispatchWorkgroups(...num_workgroups);
+  computePassEncoder.dispatchWorkgroups(...dye_workgroups);
 
   computePassEncoder.end();
 
