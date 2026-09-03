@@ -133,7 +133,7 @@ fn transport_velocity(
 ) {
     let previous_position = simulation_coords(trace_particle(id.xy));
     // the dissipation is not physical but ensures that the velocity field eventually calms down.
-    u1[buffer_index(id.xy)] = interpolate_u0(previous_position) * (1 - c.dissipation_rate);
+    u1[buffer_index(id.xy)] = interpolate_u0(previous_position) * c.dissipation_rate;
 }
 
 @compute @workgroup_size(8, 8)
@@ -208,7 +208,8 @@ fn add_source(@builtin(global_invocation_id) id: vec3u) {
     if sq_d < mouse.sq_radius {
         // the delta_x_delta_y ensures that the total amount of dye added does not depend on the size
         // of the simulation grid.
-        s0[buffer_index(id.xy)] -= 0.1 * mouse.color * (mouse.sq_radius - sq_d) / mouse.sq_radius;
+        let i = buffer_index(id.xy);
+        s0[i] += 0.05 * mouse.color * (mouse.sq_radius - sq_d) / mouse.sq_radius;
     }
 }
 
@@ -263,18 +264,9 @@ fn trace_particle(initial_position: vec2u) -> vec2f {
 }
 
 @compute @workgroup_size(8, 8)
-fn init_dye(@builtin(global_invocation_id) id: vec3u) {
-    let i = buffer_index(id.xy);
-    s0[i].r = 1.0;
-    s0[i].g = 1.0;
-    s0[i].b = 1.0;
-    s0[i].a = 1.0;
-}
-
-@compute @workgroup_size(8, 8)
 fn dissipate(@builtin(global_invocation_id) id: vec3u) {
     let i = buffer_index(id.xy);
-    s0[i].r += (1.0 - s0[i].r) * c.dissipation_rate;
-    s0[i].g += (1.0 - s0[i].g) * c.dissipation_rate;
-    s0[i].b += (1.0 - s0[i].b) * c.dissipation_rate;
+    s0[i].r *= c.dissipation_rate;
+    s0[i].g *= c.dissipation_rate;
+    s0[i].b *= c.dissipation_rate;
 }

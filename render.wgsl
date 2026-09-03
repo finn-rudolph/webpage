@@ -36,5 +36,7 @@ fn vertex(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
 @fragment
 fn fragment(@builtin(position) position: vec4f) -> @location(0) vec4f {
     let coords = simulation_coords(position.xy);
-    return max(vec4f(0.5, 0.5, 0.5, 0.6), interpolate_s(coords));
+    let dye = interpolate_s(coords);
+    let max_color = max(dye.r, max(dye.g, dye.b));
+    return vec4f(0.8510, 0.8157, 0.8157, 1.0) - dye / max(max_color, 1.0);
 }

@@ -1,5 +1,5 @@
 const simulation_width = 512;
-const simulation_height = 256;
+const simulation_height = 512;
 
 const num_workgroups = [simulation_width / 8, simulation_height / 8];
 const jacobi_iterations = 60;
@@ -7,7 +7,7 @@ const jacobi_iterations = 60;
 const mouse_radius = 0.05; // radius of the mouse force
 
 const viscosity = 0.00001;
-const dissipation_rate = 0.0005;
+const dissipation_rate = 0.9999;
 const time_scale = 0.2; // the physical time step is `time_scale` * [browser time step in ms]
 
 let canvas = document.getElementById("fluidCanvas");
@@ -22,6 +22,14 @@ let colorVectors = {
   g: { x: -0.5, y: 0.5 * Math.sqrt(3) },
   b: { x: -0.5, y: -0.5 * Math.sqrt(3) },
 };
+
+const colors = [
+  { r: 0.451, g: 0.776, b: 0.851 }, // #73C6D9
+  { r: 0.016, g: 0.749, b: 0.749 }, // #04BFBF
+  { r: 0.012, g: 0.549, b: 0.549 }, // #038C8C
+  { r: 0.537, g: 0.8, b: 0.816 }, // #89CCD0
+];
+let color = { r: 0.0, g: 0.0, b: 0.0 };
 
 // TODO; handle mouse exiting the canvas.
 canvas.addEventListener("pointerdown", (event) => {
@@ -43,6 +51,8 @@ canvas.addEventListener("pointerdown", (event) => {
       y: 0.5 * (-sin - Math.sqrt(3) * cos),
     },
   };
+
+  color = colors[Math.floor(Math.random() * 4)];
 });
 
 canvas.addEventListener("pointerup", () => {
@@ -359,17 +369,6 @@ async function init() {
     layout: renderPipelineLayout,
   });
 
-  const commandEncoder = device.createCommandEncoder();
-  const computePassEncoder = commandEncoder.beginComputePass();
-  computePassEncoder.setPipeline(pipeline("init_dye"));
-  computePassEncoder.setBindGroup(0, constBindGroup);
-  computePassEncoder.setBindGroup(1, uBindGroups[0]);
-  computePassEncoder.setBindGroup(2, sBindGroups[0]);
-  computePassEncoder.setBindGroup(3, pBindGroups[0]);
-  computePassEncoder.dispatchWorkgroups(...num_workgroups);
-  computePassEncoder.end();
-  device.queue.submit([commandEncoder.finish()]);
-
   return {
     device: device,
     bindGroups: {
@@ -448,9 +447,10 @@ function frame(time, state) {
     y: mouseView.getFloat32(4, true),
   };
 
-  mouseView.setFloat32(16, 0.4, true);
-  mouseView.setFloat32(20, 0.2, true);
-  mouseView.setFloat32(24, 0.0, true);
+  mouseView.setFloat32(16, 1.0 - color.r, true);
+  mouseView.setFloat32(20, 1.0 - color.g, true);
+  mouseView.setFloat32(24, 1.0 - color.b, true);
+  // mouseView.setFloat32(28, -1.0, true);
 
   state.device.queue.writeBuffer(state.mouseBuffer, 0, mouseParams);
 
@@ -590,7 +590,7 @@ function frame(time, state) {
   const renderPassDescriptor = {
     colorAttachments: [
       {
-        clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
+        clearValue: { r: 0.906, g: 0.875, b: 0.875, a: 1.0 },
         loadOp: "clear",
         storeOp: "store",
         view: canvasContext.getCurrentTexture().createView(),
