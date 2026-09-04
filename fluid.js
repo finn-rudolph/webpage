@@ -1,4 +1,4 @@
-let velocityRes = { x: 384, y: 384 };
+let velocityRes = { x: 256, y: 256 };
 let dyeRes = { x: 1024, y: 1024 };
 
 const jacobiIterations = 60;
@@ -10,11 +10,11 @@ let forceStrength = 1.0;
 const viewportCssPixels = window.innerWidth * window.innerHeight;
 
 if (viewportCssPixels < 600_000) {
-  velocityRes = { x: 192, y: 192 };
+  velocityRes = { x: 128, y: 128 };
   dyeRes = { x: 512, y: 512 };
   forceStrength *= 0.5;
 } else if (viewportCssPixels < 1_200_000) {
-  velocityRes = { x: 256, y: 256 };
+  velocityRes = { x: 192, y: 192 };
   dyeRes = { x: 768, y: 768 };
   forceStrength *= 0.7;
 }
@@ -22,43 +22,7 @@ if (viewportCssPixels < 600_000) {
 const velocityWorkgroups = [velocityRes.x / 8, velocityRes.y / 8];
 const dyeWorkgroups = [dyeRes.x / 8, dyeRes.y / 8];
 
-let canvas = document.getElementById("fluidCanvas");
-
-let mouseParams = new ArrayBuffer(48);
-let mouseIsDown = false;
-let mouseView = new DataView(mouseParams);
-
-const colors = [
-  { r: 0.451, g: 0.776, b: 0.851 }, // #73C6D9
-  { r: 0.016, g: 0.749, b: 0.749 }, // #04BFBF
-  { r: 0.012, g: 0.549, b: 0.549 }, // #038C8C
-  { r: 0.537, g: 0.8, b: 0.816 }, // #89CCD0
-];
-let color = { r: 0.0, g: 0.0, b: 0.0 };
-
-canvas.addEventListener("pointerdown", (event) => {
-  mouseIsDown = true;
-  mouseView.setFloat32(0, event.offsetX / canvas.clientHeight, true); // this is correct (normalized coords)
-  mouseView.setFloat32(4, event.offsetY / canvas.clientHeight, true);
-  color = colors[Math.floor(Math.random() * 4)];
-});
-
-canvas.addEventListener("pointerup", () => {
-  mouseIsDown = false;
-});
-
-canvas.addEventListener("pointerleave", () => {
-  mouseIsDown = false;
-});
-
-canvas.addEventListener("pointercancel", () => {
-  mouseIsDown = false;
-});
-
-canvas.addEventListener("pointermove", (event) => {
-  mouseView.setFloat32(0, event.offsetX / canvas.clientHeight, true);
-  mouseView.setFloat32(4, event.offsetY / canvas.clientHeight, true);
-});
+const canvas = document.getElementById("fluidCanvas");
 
 const canvasContext = canvas.getContext("webgpu");
 
@@ -70,7 +34,7 @@ const renderCode = await fetch("render.wgsl", { cache: "no-store" }).then((r) =>
   r.text(),
 );
 
-async function init() {
+export async function init() {
   if (!navigator.gpu) {
     throw Error("WebGPU not supported.");
   }
@@ -88,18 +52,21 @@ async function init() {
 
   // --- params and mouse bind group ---
 
-  const mouseBuffer = device.createBuffer({
+  const mouseBuf = device.createBuffer({
     size: 48,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
 
-  let computeConstBuffer = device.createBuffer({
+  let mouseArr = new ArrayBuffer(48);
+  let mouseView = new DataView(mouseArr);
+
+  let computeConstBuf = device.createBuffer({
     size: 96,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
 
-  const computeConst = new ArrayBuffer(96);
-  const computeConstView = new DataView(computeConst);
+  const computeConstArr = new ArrayBuffer(96);
+  const computeConstView = new DataView(computeConstArr);
 
   computeConstView.setUint32(0, velocityRes.x, true);
   computeConstView.setUint32(4, velocityRes.y, true);
@@ -113,7 +80,7 @@ async function init() {
 
   computeConstView.setFloat32(84, forceStrength, true);
 
-  device.queue.writeBuffer(computeConstBuffer, 0, computeConst);
+  device.queue.writeBuffer(computeConstBuf, 0, computeConstArr);
 
   let constLayout = device.createBindGroupLayout({
     entries: [
@@ -130,25 +97,25 @@ async function init() {
     ],
   });
 
-  let constBindGroup = device.createBindGroup({
+  let constBgr = device.createBindGroup({
     layout: constLayout,
     entries: [
       {
         binding: 0,
-        resource: { buffer: mouseBuffer },
+        resource: { buffer: mouseBuf },
       },
       {
         binding: 1,
-        resource: { buffer: computeConstBuffer },
+        resource: { buffer: computeConstBuf },
       },
     ],
   });
 
   // --- u bind group ---
 
-  let uBuffer = [];
+  let uBuf = [];
   for (let i = 0; i < 2; ++i) {
-    uBuffer[i] = device.createBuffer({
+    uBuf[i] = device.createBuffer({
       size: (velocityRes.x + 2) * (velocityRes.y + 2) * 8,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
@@ -161,16 +128,16 @@ async function init() {
       buffer: { type: "storage" },
     })),
   });
-  let uEntries = [0, 1].map((i) => ({ binding: i, resource: uBuffer[i] }));
+  let uEntries = [0, 1].map((i) => ({ binding: i, resource: uBuf[i] }));
 
-  let uBindGroups = [];
-  uBindGroups[0] = device.createBindGroup({
+  let uBgr = [];
+  uBgr[0] = device.createBindGroup({
     layout: uLayout,
     entries: uEntries,
   });
   uEntries[0].binding = 1;
   uEntries[1].binding = 0;
-  uBindGroups[1] = device.createBindGroup({
+  uBgr[1] = device.createBindGroup({
     layout: uLayout,
     entries: uEntries,
   });
@@ -219,28 +186,28 @@ async function init() {
   }));
   sEntries.push({ binding: 2, resource: linearSampler });
 
-  let sBindGroups = [];
-  sBindGroups[0] = device.createBindGroup({
+  let sBgr = [];
+  sBgr[0] = device.createBindGroup({
     layout: sLayout,
     entries: sEntries,
   });
   sEntries[0].binding = 1;
   sEntries[1].binding = 0;
-  sBindGroups[1] = device.createBindGroup({
+  sBgr[1] = device.createBindGroup({
     layout: sLayout,
     entries: sEntries,
   });
 
   // --- p bind groups ---
 
-  let pBuffer = [0, 1].map((_) =>
+  let pBuf = [0, 1].map((_) =>
     device.createBuffer({
       size: (velocityRes.x + 2) * (velocityRes.y + 2) * 4,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     }),
   );
 
-  let divergenceBuffer = device.createBuffer({
+  let divergenceBuf = device.createBuffer({
     size: (velocityRes.x + 2) * (velocityRes.y + 2) * 4,
     usage: GPUBufferUsage.STORAGE,
   });
@@ -254,19 +221,19 @@ async function init() {
   });
 
   let pEntries = [
-    { binding: 0, resource: pBuffer[0] },
-    { binding: 1, resource: pBuffer[1] },
-    { binding: 2, resource: divergenceBuffer },
+    { binding: 0, resource: pBuf[0] },
+    { binding: 1, resource: pBuf[1] },
+    { binding: 2, resource: divergenceBuf },
   ];
 
-  let pBindGroups = [];
-  pBindGroups[0] = device.createBindGroup({
+  let pBgr = [];
+  pBgr[0] = device.createBindGroup({
     layout: pLayout,
     entries: pEntries,
   });
   pEntries[0].binding = 1;
   pEntries[1].binding = 0;
-  pBindGroups[1] = device.createBindGroup({
+  pBgr[1] = device.createBindGroup({
     layout: pLayout,
     entries: pEntries,
   });
@@ -291,18 +258,18 @@ async function init() {
 
   // --- render stuff ---
 
-  let renderConstBuffer = device.createBuffer({
+  let renderConstBuf = device.createBuffer({
     size: 16,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
 
-  const renderConst = new ArrayBuffer(16);
-  const renderConstView = new DataView(renderConst);
+  const renderConstArr = new ArrayBuffer(16);
+  const renderConstView = new DataView(renderConstArr);
   renderConstView.setUint32(0, canvas.width, true);
   renderConstView.setUint32(4, canvas.height, true);
   renderConstView.setUint32(8, dyeRes.x, true);
   renderConstView.setUint32(12, dyeRes.y, true);
-  device.queue.writeBuffer(renderConstBuffer, 0, renderConst);
+  device.queue.writeBuffer(renderConstBuf, 0, renderConstArr);
 
   const renderModule = device.createShaderModule({ code: renderCode });
 
@@ -322,16 +289,16 @@ async function init() {
     },
     layout: "auto",
   });
-  const renderBindGroupLayout = renderPipeline.getBindGroupLayout(0);
+  const renderBgrLayout = renderPipeline.getBindGroupLayout(0);
 
-  let renderBindGroupEntries = [
+  let renderBgrEntries = [
     {
       binding: 0,
       resource: sTexture[0].createView(),
     },
     {
       binding: 1,
-      resource: { buffer: renderConstBuffer },
+      resource: { buffer: renderConstBuf },
     },
     {
       binding: 2,
@@ -339,26 +306,26 @@ async function init() {
     },
   ];
 
-  const renderBindGroups = [];
-  renderBindGroups[0] = device.createBindGroup({
-    layout: renderBindGroupLayout,
-    entries: renderBindGroupEntries,
+  const renderBgr = [];
+  renderBgr[0] = device.createBindGroup({
+    layout: renderBgrLayout,
+    entries: renderBgrEntries,
   });
 
-  renderBindGroupEntries[0].resource = sTexture[1].createView();
-  renderBindGroups[1] = device.createBindGroup({
-    layout: renderBindGroupLayout,
-    entries: renderBindGroupEntries,
+  renderBgrEntries[0].resource = sTexture[1].createView();
+  renderBgr[1] = device.createBindGroup({
+    layout: renderBgrLayout,
+    entries: renderBgrEntries,
   });
 
   return {
     device: device,
     bindGroups: {
-      params: constBindGroup,
-      u: uBindGroups,
-      s: sBindGroups,
-      p: pBindGroups,
-      render: renderBindGroups,
+      params: constBgr,
+      u: uBgr,
+      s: sBgr,
+      p: pBgr,
+      render: renderBgr,
     },
     pipelines: {
       addForce: compute_pipeline("add_force"),
@@ -378,53 +345,60 @@ async function init() {
       s: 0,
       p: 0,
     },
-    mouseBuffer: mouseBuffer,
-    computeConstBuffer: computeConstBuffer,
-    computeConst: computeConst,
-    computeConstView: computeConstView,
-    renderConstBuffer: renderConstBuffer,
-    renderConst: renderConst,
-    renderConstView: renderConstView,
-    data: { u: uBuffer, s: sTexture, p: pBuffer },
+    mouse: {
+      buf: mouseBuf,
+      arr: mouseArr,
+      view: mouseView,
+      isDown: false,
+      color: { r: 0, g: 0, b: 0, a: 0 },
+    },
+    computeConst: {
+      buf: computeConstBuf,
+      arr: computeConstArr,
+      view: computeConstView,
+    },
+    renderConst: {
+      buf: renderConstBuf,
+      arr: renderConstArr,
+      view: renderConstView,
+    },
   };
 }
 
 let previous_time = null;
-let previous_mouse_pos = { x: 0, y: 0 };
-let cnt = 0;
+let previousMousePosition = { x: 0, y: 0 };
 
-// TODO: if the timestep is too large, just reset the simulation.
-function frame(time, state) {
+export function frame(time, state, callback) {
   const js_dt = previous_time === null ? 0 : time - previous_time;
   previous_time = time;
 
-  cnt++;
+  callback(state, time);
 
-  mouseView.setFloat32(
+  state.mouse.view.setFloat32(
     8,
-    mouseView.getFloat32(0, true) - previous_mouse_pos.x,
+    state.mouse.view.getFloat32(0, true) - previousMousePosition.x,
     true,
   );
-  mouseView.setFloat32(
+  state.mouse.view.setFloat32(
     12,
-    mouseView.getFloat32(4, true) - previous_mouse_pos.y,
+    state.mouse.view.getFloat32(4, true) - previousMousePosition.y,
     true,
   );
-  mouseView.setFloat32(
+  state.mouse.view.setFloat32(
     32,
-    mouseRadius * mouseRadius * (mouseIsDown ? 1 : -1),
+    mouseRadius * mouseRadius * (state.mouse.isDown ? 1 : -1),
     true,
   );
-  previous_mouse_pos = {
-    x: mouseView.getFloat32(0, true),
-    y: mouseView.getFloat32(4, true),
+  previousMousePosition = {
+    x: state.mouse.view.getFloat32(0, true),
+    y: state.mouse.view.getFloat32(4, true),
   };
 
-  mouseView.setFloat32(16, 1.0 - color.r, true);
-  mouseView.setFloat32(20, 1.0 - color.g, true);
-  mouseView.setFloat32(24, 1.0 - color.b, true);
+  state.mouse.view.setFloat32(16, 1.0 - state.mouse.color.r, true);
+  state.mouse.view.setFloat32(20, 1.0 - state.mouse.color.g, true);
+  state.mouse.view.setFloat32(24, 1.0 - state.mouse.color.b, true);
 
-  state.device.queue.writeBuffer(state.mouseBuffer, 0, mouseParams);
+  state.device.queue.writeBuffer(state.mouse.buf, 0, state.mouse.arr);
 
   const dpr = window.devicePixelRatio;
   canvas.width = Math.round(canvas.clientWidth * dpr);
@@ -435,10 +409,10 @@ function frame(time, state) {
   // --- compute part ---
 
   const dt = js_dt * timeScale;
-  state.computeConstView.setFloat32(68, dt, true);
+  state.computeConst.view.setFloat32(68, dt, true);
 
   const aspect_ratio = canvas.clientWidth / canvas.clientHeight;
-  state.computeConstView.setFloat32(64, aspect_ratio, true);
+  state.computeConst.view.setFloat32(64, aspect_ratio, true);
 
   const vel_r_delta_x = velocityRes.x / aspect_ratio;
   const vel_r_delta_y = velocityRes.y;
@@ -448,35 +422,35 @@ function frame(time, state) {
   const vel_sq_delta_y = 1.0 / vel_sq_r_delta_y;
   const laplace_diagonal = -2 * (vel_sq_r_delta_x + vel_sq_r_delta_y);
 
-  state.computeConstView.setFloat32(72, 1 / laplace_diagonal, true);
-  state.computeConstView.setFloat32(
+  state.computeConst.view.setFloat32(72, 1 / laplace_diagonal, true);
+  state.computeConst.view.setFloat32(
     76,
     vel_sq_delta_y / (2 * (vel_sq_delta_x + vel_sq_delta_y)),
     true,
   );
-  state.computeConstView.setFloat32(
+  state.computeConst.view.setFloat32(
     80,
     vel_sq_delta_x / (2 * (vel_sq_delta_x + vel_sq_delta_y)),
     true,
   );
 
-  state.computeConstView.setFloat32(16, vel_r_delta_x, true);
-  state.computeConstView.setFloat32(20, vel_r_delta_y, true);
-  state.computeConstView.setFloat32(24, 0.5 * vel_r_delta_x, true);
-  state.computeConstView.setFloat32(28, 0.5 * vel_r_delta_y, true);
+  state.computeConst.view.setFloat32(16, vel_r_delta_x, true);
+  state.computeConst.view.setFloat32(20, vel_r_delta_y, true);
+  state.computeConst.view.setFloat32(24, 0.5 * vel_r_delta_x, true);
+  state.computeConst.view.setFloat32(28, 0.5 * vel_r_delta_y, true);
 
   const dye_r_delta_x = dyeRes.x / aspect_ratio;
   const dye_r_delta_y = dyeRes.y;
 
-  state.computeConstView.setFloat32(48, dye_r_delta_x, true);
-  state.computeConstView.setFloat32(52, dye_r_delta_y, true);
-  state.computeConstView.setFloat32(56, 0.5 * dye_r_delta_x, true);
-  state.computeConstView.setFloat32(60, 0.5 * dye_r_delta_y, true);
+  state.computeConst.view.setFloat32(48, dye_r_delta_x, true);
+  state.computeConst.view.setFloat32(52, dye_r_delta_y, true);
+  state.computeConst.view.setFloat32(56, 0.5 * dye_r_delta_x, true);
+  state.computeConst.view.setFloat32(60, 0.5 * dye_r_delta_y, true);
 
   state.device.queue.writeBuffer(
-    state.computeConstBuffer,
+    state.computeConst.buf,
     0,
-    state.computeConst,
+    state.computeConst.arr,
   );
 
   const computePassEncoder = commandEncoder.beginComputePass();
@@ -485,7 +459,7 @@ function frame(time, state) {
   computePassEncoder.setBindGroup(2, state.bindGroups.s[state.parity.s]);
   computePassEncoder.setBindGroup(3, state.bindGroups.p[state.parity.p]);
 
-  if (mouseIsDown) {
+  if (state.mouse.isDown) {
     computePassEncoder.setPipeline(state.pipelines.addForce);
     computePassEncoder.dispatchWorkgroups(...velocityWorkgroups);
   }
@@ -538,9 +512,13 @@ function frame(time, state) {
 
   // --- render part ---
 
-  state.renderConstView.setUint32(0, canvas.width, true);
-  state.renderConstView.setUint32(4, canvas.height, true);
-  state.device.queue.writeBuffer(state.renderConstBuffer, 0, state.renderConst);
+  state.renderConst.view.setUint32(0, canvas.width, true);
+  state.renderConst.view.setUint32(4, canvas.height, true);
+  state.device.queue.writeBuffer(
+    state.renderConst.buf,
+    0,
+    state.renderConst.arr,
+  );
 
   const renderPassDescriptor = {
     colorAttachments: [
@@ -562,21 +540,21 @@ function frame(time, state) {
 
   state.device.queue.submit([commandEncoder.finish()]);
 
-  if (cnt % 1 == 0) {
-    // debug_buffer(
-    //   state.data.u[state.parity.u],
-    //   (velocity_res.x + 2) * (velocity_res.y + 2) * 8,
-    //   state.device,
-    // );
-    // debug_texture(
-    //   state.data.s[state.parity.s],
-    //   dyeRes.x,
-    //   dyeRes.y,
-    //   state.device,
-    // );
-  }
+  // if (cnt % 41 == 0) {
+  // debug_buffer(
+  //   state.data.u[state.parity.u],
+  //   (velocity_res.x + 2) * (velocity_res.y + 2) * 8,
+  //   state.device,
+  // );
+  // debug_texture(
+  //   state.data.s[state.parity.s],
+  //   dyeRes.x,
+  //   dyeRes.y,
+  //   state.device,
+  // );
+  // }
 
-  requestAnimationFrame((time) => frame(time, state));
+  requestAnimationFrame((time) => frame(time, state, callback));
 }
 
 async function debug_buffer(input, size, device) {
@@ -626,8 +604,3 @@ async function debug_texture(input, width, height, device) {
   let arr = new Float32Array(out);
   console.log(arr.slice(10000).every((x) => x === 0));
 }
-
-let state = await init();
-console.log("initialization finished");
-
-requestAnimationFrame((time) => frame(time, state));
