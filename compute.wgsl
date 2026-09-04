@@ -119,10 +119,10 @@ fn add_force(
     }
 }
 
-// This function also slightly dissipates the velocity. This is not physical but ensures that
-// the velocity field eventually calms down.
+// The dissipation is not quite physical, but makes the fluid eventually calm down
+// and prevents blowups.
 @compute @workgroup_size(8, 8)
-fn transport_velocity(
+fn transport_dissipate_velocity(
     @builtin(global_invocation_id) id: vec3u,
 ) {
     let i = buffer_index(id.xy, c.velocity_grid);
@@ -130,7 +130,7 @@ fn transport_velocity(
     let k1 = -c.dt * u0[i];
     let k2 = -c.dt * interpolate_u0(grid_coords(clamp(nc + 0.5 * k1), c.velocity_grid));
     let previous_position = grid_coords(clamp(nc + k2), c.velocity_grid);
-    u1[i] = interpolate_u0(previous_position) * c.dissipation_rate;
+    u1[i] = max(min(interpolate_u0(previous_position) * c.dissipation_rate, vec2f(10.0, 10.0)), vec2f(-10.0, -10.0));
 }
 
 @compute @workgroup_size(8, 8)
@@ -258,9 +258,6 @@ fn transport_dye(
 // }
 
 @compute @workgroup_size(8, 8)
-fn dissipate(@builtin(global_invocation_id) id: vec3u) {
-    let i = buffer_index(id.xy, c.dye_grid);
-    s0[i].r *= c.dissipation_rate;
-    s0[i].g *= c.dissipation_rate;
-    s0[i].b *= c.dissipation_rate;
+fn dissipate_dye(@builtin(global_invocation_id) id: vec3u) {
+    s0[buffer_index(id.xy, c.dye_grid)] *= c.dissipation_rate;
 }

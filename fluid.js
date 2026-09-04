@@ -264,7 +264,7 @@ async function init() {
     bindGroupLayouts: [constLayout, uLayout, sLayout, pLayout],
   });
 
-  const pipeline = (entryPoint) => {
+  const compute_pipeline = (entryPoint) => {
     return device.createComputePipeline({
       layout: layout,
       compute: {
@@ -359,16 +359,18 @@ async function init() {
       render: renderBindGroups,
     },
     pipelines: {
-      addForce: pipeline("add_force"),
-      transportVelocity: pipeline("transport_velocity"),
-      divergence: pipeline("divergence"),
-      jacobiPressure: pipeline("jacobi_pressure"),
-      subPressureGradient: pipeline("sub_pressure_gradient"),
-      addDye: pipeline("add_dye"),
-      transportDye: pipeline("transport_dye"),
-      dissipate: pipeline("dissipate"),
-      velocityBoundary: pipeline("velocity_boundary"),
-      pressureBoundary: pipeline("pressure_boundary"),
+      addForce: compute_pipeline("add_force"),
+      transportDissipateVelocity: compute_pipeline(
+        "transport_dissipate_velocity",
+      ),
+      divergence: compute_pipeline("divergence"),
+      jacobiPressure: compute_pipeline("jacobi_pressure"),
+      subPressureGradient: compute_pipeline("sub_pressure_gradient"),
+      addDye: compute_pipeline("add_dye"),
+      transportDye: compute_pipeline("transport_dye"),
+      dissipateDye: compute_pipeline("dissipate_dye"),
+      velocityBoundary: compute_pipeline("velocity_boundary"),
+      pressureBoundary: compute_pipeline("pressure_boundary"),
       render: renderPipeline,
     },
     parity: {
@@ -494,7 +496,7 @@ function frame(time, state) {
     Math.max(velocity_res.x, velocity_res.y) / 64,
   );
 
-  computePassEncoder.setPipeline(state.pipelines.transportVelocity);
+  computePassEncoder.setPipeline(state.pipelines.transportDissipateVelocity);
   computePassEncoder.dispatchWorkgroups(...velocity_workgroups);
   state.parity.u ^= 1;
   computePassEncoder.setBindGroup(1, state.bindGroups.u[state.parity.u]);
@@ -539,7 +541,7 @@ function frame(time, state) {
   state.parity.s ^= 1;
   computePassEncoder.setBindGroup(2, state.bindGroups.s[state.parity.s]);
 
-  computePassEncoder.setPipeline(state.pipelines.dissipate);
+  computePassEncoder.setPipeline(state.pipelines.dissipateDye);
   computePassEncoder.dispatchWorkgroups(...dye_workgroups);
 
   computePassEncoder.end();
