@@ -13,8 +13,6 @@ const velocity_workgroups = [velocity_res.x / 8, velocity_res.y / 8];
 const dye_workgroups = [dye_res.x / 8, dye_res.y / 8];
 
 let canvas = document.getElementById("fluidCanvas");
-console.log(`canvas.width = ${canvas.width}`);
-console.log(`canvas.height = ${canvas.height}`);
 
 let mouseParams = new ArrayBuffer(48);
 let mouseIsDown = false;
@@ -28,7 +26,6 @@ const colors = [
 ];
 let color = { r: 0.0, g: 0.0, b: 0.0 };
 
-// TODO; handle mouse exiting the canvas.
 canvas.addEventListener("pointerdown", (event) => {
   mouseIsDown = true;
   mouseView.setFloat32(0, event.offsetX / canvas.clientHeight, true); // this is correct (normalized coords)
@@ -37,6 +34,14 @@ canvas.addEventListener("pointerdown", (event) => {
 });
 
 canvas.addEventListener("pointerup", () => {
+  mouseIsDown = false;
+});
+
+canvas.addEventListener("pointerleave", () => {
+  mouseIsDown = false;
+});
+
+canvas.addEventListener("pointercancel", () => {
   mouseIsDown = false;
 });
 

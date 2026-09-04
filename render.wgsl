@@ -36,5 +36,5 @@ fn vertex(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
 @fragment
 fn fragment(@builtin(position) position: vec4f) -> @location(0) vec4f {
     let dye = interpolate_s(grid_coords(position.xy));
-    return vec4f(1, 1, 1, 1) - dye / max(dye.a, 1.0);
+    return vec4f(1.0, 1.0, 1.0, 1.0) - dye / max(dye.a, 1.0);
 }
