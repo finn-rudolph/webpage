@@ -548,7 +548,7 @@ function frame(time, state) {
   const renderPassDescriptor = {
     colorAttachments: [
       {
-        clearValue: { r: 0.851, g: 0.8157, b: 0.8157, a: 1.0 },
+        clearValue: { r: 0, g: 0, b: 0, a: 0 },
         loadOp: "clear",
         storeOp: "store",
         view: canvasContext.getCurrentTexture().createView(),

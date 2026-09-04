@@ -115,7 +115,7 @@ fn add_force(
     let nc = normalized_coords(id.xy, c.velocity_grid);
     let sq_d = dot(nc - mouse.position, nc - mouse.position);
     if sq_d < mouse.sq_radius {
-        u0[buffer_index(id.xy, c.velocity_grid)] += (f32(mouse.sq_radius - sq_d) / mouse.sq_radius) * mouse.displacement * 0.5;
+        u0[buffer_index(id.xy, c.velocity_grid)] += (f32(mouse.sq_radius - sq_d) / mouse.sq_radius) * mouse.displacement;
     }
 }
 
