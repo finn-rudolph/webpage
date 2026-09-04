@@ -1,6 +1,6 @@
 // Some facts about the data here:
 //
-//   *  All buffers for grid data are padded by 1 in x and y direction to handle
+//   *  The velocity, pressure and related buffers are padded by 1 in x and y direction to handle
 //      boundary conditions. When grid coordinates are passed around, they are 0-based.
 //      We only add the + 1 when accessing data.
 //
@@ -52,10 +52,13 @@ var<storage, read_write> u0: array<vec2f>;
 var<storage, read_write> u1: array<vec2f>;
 
 @group(2) @binding(0)
-var<storage, read_write> s0: array<vec4f>;
+var s0: texture_2d<f32>;
 
 @group(2) @binding(1)
-var<storage, read_write> s1: array<vec4f>;
+var s1: texture_storage_2d<rgba16float, write>;
+
+@group(2) @binding(2)
+var linear_sampler: sampler;
 
 @group(3) @binding(0)
 var<storage, read_write> p0: array<f32>;
@@ -66,15 +69,7 @@ var<storage, read_write> p1: array<f32>;
 @group(3) @binding(2)
 var<storage, read_write> u_divergence: array<f32>;
 
-fn mix2d_f(a00: f32, a01: f32, a10: f32, a11: f32, w: vec2f) -> f32 {
-    return mix(mix(a00, a01, w.y), mix(a10, a11, w.y), w.x);
-}
-
 fn mix2d_vec2f(a00: vec2f, a01: vec2f, a10: vec2f, a11: vec2f, w: vec2f) -> vec2f {
-    return mix(mix(a00, a01, w.y), mix(a10, a11, w.y), w.x);
-}
-
-fn mix2d_vec4f(a00: vec4f, a01: vec4f, a10: vec4f, a11: vec4f, w: vec2f) -> vec4f {
     return mix(mix(a00, a01, w.y), mix(a10, a11, w.y), w.x);
 }
 
@@ -96,17 +91,6 @@ fn clamp(nc: vec2f) -> vec2f {
 
 fn buffer_index(grid_coords: vec2u, grid: Grid) -> u32 {
     return (grid_coords.y + 1) * grid.buf_size.x + (grid_coords.x + 1);
-}
-
-fn interpolate_s0(coords: vec2f) -> vec4f {
-    // The + (0.5, 0.5) is because the grid coordinates are at the centers of the grid cells,
-    // and we have an array index offset due to the boundary.
-    let upper_left = vec2u(coords + vec2f(0.5, 0.5));
-    let mix_weight = coords + vec2f(0.5, 0.5) - vec2f(upper_left);
-
-    let i = upper_left.y * c.dye_grid.buf_size.x + upper_left.x;
-    return mix2d_vec4f(s0[i], s0[i + c.dye_grid.buf_size.x], s0[i + 1],
-        s0[i + c.dye_grid.buf_size.x + 1], mix_weight);
 }
 
 fn interpolate_u0(coords: vec2f) -> vec2f {
@@ -141,7 +125,7 @@ fn transport_dissipate_velocity(
     let k1 = -c.dt * u0[i];
     let k2 = -c.dt * interpolate_u0(grid_coords(clamp(nc + 0.5 * k1), c.velocity_grid));
     let previous_position = grid_coords(clamp(nc + k2), c.velocity_grid);
-    u1[i] = interpolate_u0(previous_position) * 0.999;
+    u1[i] = interpolate_u0(previous_position) * 0.995;
 }
 
 @compute @workgroup_size(8, 8)
@@ -201,23 +185,19 @@ fn velocity_boundary(@builtin(global_invocation_id) id: vec3u) {
 }
 
 @compute @workgroup_size(8, 8)
-fn add_dye(@builtin(global_invocation_id) id: vec3u) {
-    let nc = normalized_coords(id.xy, c.dye_grid);
-    let sq_d = dot(nc - mouse.position, nc - mouse.position);
-    if sq_d < mouse.sq_radius {
-        let i = buffer_index(id.xy, c.dye_grid);
-        s0[i] += 0.1 * mouse.color * (mouse.sq_radius - sq_d) / mouse.sq_radius;
-    }
-}
-
-@compute @workgroup_size(8, 8)
-fn transport_dissipate_dye(
+fn update_dye(
     @builtin(global_invocation_id) id: vec3u,
 ) {
     let nc = normalized_coords(id.xy, c.dye_grid);
     let velocity_grid_coords = grid_coords(nc, c.velocity_grid);
     let k1 = -c.dt * interpolate_u0(velocity_grid_coords);
     let k2 = -c.dt * interpolate_u0(grid_coords(clamp(nc + 0.5 * k1), c.velocity_grid));
-    let previous_position = grid_coords(clamp(nc + k2), c.dye_grid);
-    s1[buffer_index(id.xy, c.dye_grid)] = interpolate_s0(previous_position) * 0.993;
+    let previous_nc = clamp(nc + k2);
+    var value = textureSampleLevel(s0, linear_sampler, vec2f(previous_nc.x / c.aspect_ratio, previous_nc.y), 0.0) * 0.992;
+
+    let sq_d = dot(previous_nc - mouse.position, previous_nc - mouse.position);
+    if sq_d < mouse.sq_radius {
+        value += 0.1 * mouse.color * (mouse.sq_radius - sq_d) / mouse.sq_radius;
+    }
+    textureStore(s1, id.xy, value);
 }

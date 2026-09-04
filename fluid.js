@@ -1,20 +1,20 @@
-let velocityRes = { x: 256, y: 256 };
+let velocityRes = { x: 384, y: 384 };
 let dyeRes = { x: 1024, y: 1024 };
 
 const jacobiIterations = 60;
 
 const mouseRadius = 0.05; // radius of the mouse force
 const timeScale = 0.05; // the physical time step is `time_scale` * [browser time step in ms]
-let forceStrength = 1.4;
+let forceStrength = 1.0;
 
 const viewportCssPixels = window.innerWidth * window.innerHeight;
 
 if (viewportCssPixels < 600_000) {
-  velocityRes = { x: 128, y: 128 };
+  velocityRes = { x: 192, y: 192 };
   dyeRes = { x: 512, y: 512 };
   forceStrength *= 0.5;
-} else if (viewportCssPixels < 1_400_000) {
-  velocityRes = { x: 192, y: 192 };
+} else if (viewportCssPixels < 1_200_000) {
+  velocityRes = { x: 256, y: 256 };
   dyeRes = { x: 768, y: 768 };
   forceStrength *= 0.7;
 }
@@ -177,23 +177,47 @@ async function init() {
 
   // --- s bind group ---
 
-  let sBuffer = [];
-  for (let i = 0; i < 2; ++i) {
-    sBuffer[i] = device.createBuffer({
-      size: (dyeRes.x + 2) * (dyeRes.y + 2) * 16,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
-    });
-  }
+  const sTexture = [0, 1].map((_) =>
+    device.createTexture({
+      size: [dyeRes.x, dyeRes.y],
+      format: "rgba16float",
+      usage:
+        GPUTextureUsage.TEXTURE_BINDING |
+        GPUTextureUsage.STORAGE_BINDING |
+        GPUTextureUsage.COPY_SRC,
+    }),
+  );
 
-  let sLayout = device.createBindGroupLayout({
-    entries: [0, 1].map((i) => ({
-      binding: i,
-      visibility: GPUShaderStage.COMPUTE,
-      buffer: { type: "storage" },
-    })),
+  const linearSampler = device.createSampler({
+    magFilter: "linear",
+    minFilter: "linear",
   });
 
-  let sEntries = [0, 1].map((i) => ({ binding: i, resource: sBuffer[i] }));
+  let sLayout = device.createBindGroupLayout({
+    entries: [
+      {
+        binding: 0,
+        visibility: GPUShaderStage.COMPUTE,
+        texture: { sampleType: "float" },
+      },
+      {
+        binding: 1,
+        visibility: GPUShaderStage.COMPUTE,
+        storageTexture: { access: "write-only", format: "rgba16float" },
+      },
+      {
+        binding: 2,
+        visibility: GPUShaderStage.COMPUTE,
+        sampler: { type: "filtering" },
+      },
+    ],
+  });
+
+  let sEntries = [0, 1].map((i) => ({
+    binding: i,
+    resource: sTexture[i].createView(),
+  }));
+  sEntries.push({ binding: 2, resource: linearSampler });
 
   let sBindGroups = [];
   sBindGroups[0] = device.createBindGroup({
@@ -209,13 +233,12 @@ async function init() {
 
   // --- p bind groups ---
 
-  let pBuffer = [];
-  for (let i = 0; i < 2; ++i) {
-    pBuffer[i] = device.createBuffer({
+  let pBuffer = [0, 1].map((_) =>
+    device.createBuffer({
       size: (velocityRes.x + 2) * (velocityRes.y + 2) * 4,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
-    });
-  }
+    }),
+  );
 
   let divergenceBuffer = device.createBuffer({
     size: (velocityRes.x + 2) * (velocityRes.y + 2) * 4,
@@ -223,34 +246,16 @@ async function init() {
   });
 
   let pLayout = device.createBindGroupLayout({
-    entries: [
-      {
-        binding: 0,
-        visibility: GPUShaderStage.COMPUTE,
-        buffer: { type: "storage" },
-      },
-      {
-        binding: 1,
-        visibility: GPUShaderStage.COMPUTE,
-        buffer: { type: "storage" },
-      },
-      {
-        binding: 2,
-        visibility: GPUShaderStage.COMPUTE,
-        buffer: { type: "storage" },
-      },
-    ],
+    entries: [0, 1, 2].map((i) => ({
+      binding: i,
+      visibility: GPUShaderStage.COMPUTE,
+      buffer: { type: "storage" },
+    })),
   });
 
   let pEntries = [
-    {
-      binding: 0,
-      resource: pBuffer[0],
-    },
-    {
-      binding: 1,
-      resource: pBuffer[1],
-    },
+    { binding: 0, resource: pBuffer[0] },
+    { binding: 1, resource: pBuffer[1] },
     { binding: 2, resource: divergenceBuffer },
   ];
 
@@ -299,47 +304,6 @@ async function init() {
   renderConstView.setUint32(12, dyeRes.y, true);
   device.queue.writeBuffer(renderConstBuffer, 0, renderConst);
 
-  let renderBindGroupEntries = [
-    {
-      binding: 0,
-      resource: { buffer: sBuffer[0] },
-    },
-    {
-      binding: 1,
-      resource: { buffer: renderConstBuffer },
-    },
-  ];
-
-  let renderBindGroupLayout = device.createBindGroupLayout({
-    entries: [
-      {
-        binding: 0,
-        visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX,
-        buffer: { type: "read-only-storage" },
-      },
-      {
-        binding: 1,
-        visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX,
-        buffer: { type: "uniform" },
-      },
-    ],
-  });
-
-  const renderBindGroups = [];
-  renderBindGroups[0] = device.createBindGroup({
-    layout: renderBindGroupLayout,
-    entries: renderBindGroupEntries,
-  });
-
-  renderBindGroupEntries[0].resource = sBuffer[1];
-  renderBindGroups[1] = device.createBindGroup({
-    layout: renderBindGroupLayout,
-    entries: renderBindGroupEntries,
-  });
-
-  const renderPipelineLayout = device.createPipelineLayout({
-    bindGroupLayouts: [renderBindGroupLayout],
-  });
   const renderModule = device.createShaderModule({ code: renderCode });
 
   const renderPipeline = device.createRenderPipeline({
@@ -356,7 +320,35 @@ async function init() {
         },
       ],
     },
-    layout: renderPipelineLayout,
+    layout: "auto",
+  });
+  const renderBindGroupLayout = renderPipeline.getBindGroupLayout(0);
+
+  let renderBindGroupEntries = [
+    {
+      binding: 0,
+      resource: sTexture[0].createView(),
+    },
+    {
+      binding: 1,
+      resource: { buffer: renderConstBuffer },
+    },
+    {
+      binding: 2,
+      resource: linearSampler,
+    },
+  ];
+
+  const renderBindGroups = [];
+  renderBindGroups[0] = device.createBindGroup({
+    layout: renderBindGroupLayout,
+    entries: renderBindGroupEntries,
+  });
+
+  renderBindGroupEntries[0].resource = sTexture[1].createView();
+  renderBindGroups[1] = device.createBindGroup({
+    layout: renderBindGroupLayout,
+    entries: renderBindGroupEntries,
   });
 
   return {
@@ -376,10 +368,9 @@ async function init() {
       divergence: compute_pipeline("divergence"),
       jacobiPressure: compute_pipeline("jacobi_pressure"),
       subPressureGradient: compute_pipeline("sub_pressure_gradient"),
-      addDye: compute_pipeline("add_dye"),
-      transportDissipateDye: compute_pipeline("transport_dissipate_dye"),
       velocityBoundary: compute_pipeline("velocity_boundary"),
       pressureBoundary: compute_pipeline("pressure_boundary"),
+      updateDye: compute_pipeline("update_dye"),
       render: renderPipeline,
     },
     parity: {
@@ -394,11 +385,7 @@ async function init() {
     renderConstBuffer: renderConstBuffer,
     renderConst: renderConst,
     renderConstView: renderConstView,
-    data: {
-      u: uBuffer,
-      s: sBuffer,
-      p: pBuffer,
-    },
+    data: { u: uBuffer, s: sTexture, p: pBuffer },
   };
 }
 
@@ -423,7 +410,11 @@ function frame(time, state) {
     mouseView.getFloat32(4, true) - previous_mouse_pos.y,
     true,
   );
-  mouseView.setFloat32(32, mouseRadius * mouseRadius, true);
+  mouseView.setFloat32(
+    32,
+    mouseRadius * mouseRadius * (mouseIsDown ? 1 : -1),
+    true,
+  );
   previous_mouse_pos = {
     x: mouseView.getFloat32(0, true),
     y: mouseView.getFloat32(4, true),
@@ -539,15 +530,9 @@ function frame(time, state) {
   computePassEncoder.setPipeline(state.pipelines.subPressureGradient);
   computePassEncoder.dispatchWorkgroups(...velocityWorkgroups);
 
-  if (mouseIsDown) {
-    computePassEncoder.setPipeline(state.pipelines.addDye);
-    computePassEncoder.dispatchWorkgroups(...dyeWorkgroups);
-  }
-
-  computePassEncoder.setPipeline(state.pipelines.transportDissipateDye);
+  computePassEncoder.setPipeline(state.pipelines.updateDye);
   computePassEncoder.dispatchWorkgroups(...dyeWorkgroups);
   state.parity.s ^= 1;
-  computePassEncoder.setBindGroup(2, state.bindGroups.s[state.parity.s]);
 
   computePassEncoder.end();
 
@@ -577,15 +562,16 @@ function frame(time, state) {
 
   state.device.queue.submit([commandEncoder.finish()]);
 
-  if (cnt % 41 == 0) {
+  if (cnt % 1 == 0) {
     // debug_buffer(
     //   state.data.u[state.parity.u],
     //   (velocity_res.x + 2) * (velocity_res.y + 2) * 8,
     //   state.device,
     // );
-    // debug_buffer(
+    // debug_texture(
     //   state.data.s[state.parity.s],
-    //   (dye_res.x + 2) * (dye_res.y + 2) * 16,
+    //   dyeRes.x,
+    //   dyeRes.y,
     //   state.device,
     // );
   }
@@ -618,7 +604,7 @@ async function debug_buffer(input, size, device) {
 
 async function debug_texture(input, width, height, device) {
   let buffer = device.createBuffer({
-    size: width * height * 4,
+    size: width * height * 8,
     usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
   });
 
@@ -626,7 +612,7 @@ async function debug_texture(input, width, height, device) {
 
   encoder.copyTextureToBuffer(
     { texture: input },
-    { buffer: buffer, bytesPerRow: width * 4 },
+    { buffer: buffer, bytesPerRow: width * 8 },
     { width, height },
   );
 
@@ -634,11 +620,11 @@ async function debug_texture(input, width, height, device) {
 
   await buffer.mapAsync(GPUMapMode.READ, 0);
 
-  const copyArrayBuffer = buffer.getMappedRange(0, width * height * 4);
+  const copyArrayBuffer = buffer.getMappedRange(0, width * height * 8);
   const out = copyArrayBuffer.slice();
   buffer.unmap();
   let arr = new Float32Array(out);
-  console.log(arr);
+  console.log(arr.slice(10000).every((x) => x === 0));
 }
 
 let state = await init();
