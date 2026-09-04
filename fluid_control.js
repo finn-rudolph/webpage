@@ -1,4 +1,4 @@
-import { init, frame } from "./fluid.js";
+import { init, frame, colors } from "./fluid.js";
 
 const canvas = document.getElementById("fluidCanvas");
 
@@ -6,13 +6,6 @@ let mouseIsDown = false;
 let color = { r: 0.0, g: 0.0, b: 0.0 };
 
 const initialState = await init();
-
-const colors = [
-  { r: 0.451, g: 0.776, b: 0.851 }, // #73C6D9
-  { r: 0.016, g: 0.749, b: 0.749 }, // #04BFBF
-  { r: 0.012, g: 0.549, b: 0.549 }, // #038C8C
-  { r: 0.537, g: 0.8, b: 0.816 }, // #89CCD0
-];
 
 canvas.addEventListener("pointerdown", (event) => {
   mouseIsDown = true;
@@ -26,7 +19,7 @@ canvas.addEventListener("pointerdown", (event) => {
     event.offsetY / canvas.clientHeight,
     true,
   );
-  color = colors[Math.floor(Math.random() * 4)];
+  color = colors[Math.floor(Math.random() * colors.length)];
 });
 
 canvas.addEventListener("pointerup", () => {

@@ -19,11 +19,21 @@ if (viewportCssPixels < 600_000) {
   forceStrength *= 0.7;
 }
 
+export const colors = [
+  0x73c6d9, 0x04bfbf, 0x038c8c, 0x89ccd0, 0x048abf, 0x08b1b8, 0xf2b705,
+  0xf28907,
+].map((hex) => {
+  return {
+    r: ((hex >> 16) % 256) / 256,
+    g: ((hex >> 8) % 256) / 256,
+    b: (hex % 256) / 256,
+  };
+});
+
 const velocityWorkgroups = [velocityRes.x / 8, velocityRes.y / 8];
 const dyeWorkgroups = [dyeRes.x / 8, dyeRes.y / 8];
 
 const canvas = document.getElementById("fluidCanvas");
-
 const canvasContext = canvas.getContext("webgpu");
 
 // TODO: remove the no-cache
