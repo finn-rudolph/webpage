@@ -5,7 +5,6 @@ const jacobi_iterations = 60;
 
 const mouse_radius = 0.05; // radius of the mouse force
 
-const viscosity = 0.0;
 const dissipation_rate = 0.99;
 const time_scale = 0.1; // the physical time step is `time_scale` * [browser time step in ms]
 
@@ -367,8 +366,7 @@ async function init() {
       jacobiPressure: compute_pipeline("jacobi_pressure"),
       subPressureGradient: compute_pipeline("sub_pressure_gradient"),
       addDye: compute_pipeline("add_dye"),
-      transportDye: compute_pipeline("transport_dye"),
-      dissipateDye: compute_pipeline("dissipate_dye"),
+      transportDissipateDye: compute_pipeline("transport_dissipate_dye"),
       velocityBoundary: compute_pipeline("velocity_boundary"),
       pressureBoundary: compute_pipeline("pressure_boundary"),
       render: renderPipeline,
@@ -536,13 +534,13 @@ function frame(time, state) {
     computePassEncoder.dispatchWorkgroups(...dye_workgroups);
   }
 
-  computePassEncoder.setPipeline(state.pipelines.transportDye);
+  computePassEncoder.setPipeline(state.pipelines.transportDissipateDye);
   computePassEncoder.dispatchWorkgroups(...dye_workgroups);
   state.parity.s ^= 1;
   computePassEncoder.setBindGroup(2, state.bindGroups.s[state.parity.s]);
 
-  computePassEncoder.setPipeline(state.pipelines.dissipateDye);
-  computePassEncoder.dispatchWorkgroups(...dye_workgroups);
+  // computePassEncoder.setPipeline(state.pipelines.dissipateDye);
+  // computePassEncoder.dispatchWorkgroups(...dye_workgroups);
 
   computePassEncoder.end();
 
