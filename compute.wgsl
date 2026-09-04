@@ -24,17 +24,17 @@ struct Grid {
 struct Constants {
     velocity_grid: Grid,
     dye_grid: Grid,                                 // 32
-    dissipation_rate: f32,                          // 64
-    aspect_ratio: f32,                              // 68
-    dt: f32,                                        // 72
-    jacobi_rhs: f32,                                // 76
-    jacobi_x: f32,                                  // 80
-    jacobi_y: f32,                                  // 84
+    aspect_ratio: f32,                              // 64
+    dt: f32,                                        // 68
+    jacobi_rhs: f32,                                // 72
+    jacobi_x: f32,                                  // 76
+    jacobi_y: f32,                                  // 80
+    force_strength: f32,                            // 84
 }
 
 struct Mouse {
-    position: vec2f, // in normalized coords
-    displacement: vec2f, // already scaled by dt
+    position: vec2f, // in normalized coordinates
+    displacement: vec2f,
     color: vec4f,
     sq_radius: f32,
 }
@@ -125,7 +125,8 @@ fn add_force(
     let nc = normalized_coords(id.xy, c.velocity_grid);
     let sq_d = dot(nc - mouse.position, nc - mouse.position);
     if sq_d < mouse.sq_radius {
-        u0[buffer_index(id.xy, c.velocity_grid)] += (f32(mouse.sq_radius - sq_d) / mouse.sq_radius) * mouse.displacement;
+        u0[buffer_index(id.xy, c.velocity_grid)] += (f32(mouse.sq_radius - sq_d) / mouse.sq_radius)
+            * mouse.displacement * c.force_strength;
     }
 }
 
@@ -140,7 +141,7 @@ fn transport_dissipate_velocity(
     let k1 = -c.dt * u0[i];
     let k2 = -c.dt * interpolate_u0(grid_coords(clamp(nc + 0.5 * k1), c.velocity_grid));
     let previous_position = grid_coords(clamp(nc + k2), c.velocity_grid);
-    u1[i] = interpolate_u0(previous_position) * c.dissipation_rate;
+    u1[i] = interpolate_u0(previous_position) * 0.999;
 }
 
 @compute @workgroup_size(8, 8)
@@ -218,5 +219,5 @@ fn transport_dissipate_dye(
     let k1 = -c.dt * interpolate_u0(velocity_grid_coords);
     let k2 = -c.dt * interpolate_u0(grid_coords(clamp(nc + 0.5 * k1), c.velocity_grid));
     let previous_position = grid_coords(clamp(nc + k2), c.dye_grid);
-    s1[buffer_index(id.xy, c.dye_grid)] = interpolate_s0(previous_position) * c.dissipation_rate;
+    s1[buffer_index(id.xy, c.dye_grid)] = interpolate_s0(previous_position) * 0.993;
 }
