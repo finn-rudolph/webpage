@@ -91,12 +91,12 @@ async function init() {
   computeConstView.setUint32(8, velocity_res.x + 2, true);
   computeConstView.setUint32(12, velocity_res.y + 2, true);
 
-  computeConstView.setUint32(24, dye_res.x, true);
-  computeConstView.setUint32(28, dye_res.y, true);
-  computeConstView.setUint32(32, dye_res.x + 2, true);
-  computeConstView.setUint32(36, dye_res.y + 2, true);
+  computeConstView.setUint32(32, dye_res.x, true);
+  computeConstView.setUint32(36, dye_res.y, true);
+  computeConstView.setUint32(40, dye_res.x + 2, true);
+  computeConstView.setUint32(44, dye_res.y + 2, true);
 
-  computeConstView.setFloat32(48, dissipation_rate, true);
+  computeConstView.setFloat32(64, dissipation_rate, true);
 
   device.queue.writeBuffer(computeConstBuffer, 0, computeConst);
 
@@ -134,7 +134,7 @@ async function init() {
   let uBuffer = [];
   for (let i = 0; i < 2; ++i) {
     uBuffer[i] = device.createBuffer({
-      size: (simulation_width + 2) * (simulation_height + 2) * 8,
+      size: (velocity_res.x + 2) * (velocity_res.y + 2) * 8,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
   }
@@ -165,7 +165,7 @@ async function init() {
   let sBuffer = [];
   for (let i = 0; i < 2; ++i) {
     sBuffer[i] = device.createBuffer({
-      size: (simulation_width + 2) * (simulation_height + 2) * 16,
+      size: (dye_res.x + 2) * (dye_res.y + 2) * 16,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
   }
@@ -197,13 +197,13 @@ async function init() {
   let pBuffer = [];
   for (let i = 0; i < 2; ++i) {
     pBuffer[i] = device.createBuffer({
-      size: (simulation_width + 2) * (simulation_height + 2) * 4,
+      size: (velocity_res.x + 2) * (velocity_res.y + 2) * 4,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
   }
 
   let divergenceBuffer = device.createBuffer({
-    size: (simulation_width + 2) * (simulation_height + 2) * 4,
+    size: (velocity_res.x + 2) * (velocity_res.y + 2) * 4,
     usage: GPUBufferUsage.STORAGE,
   });
 
@@ -359,7 +359,7 @@ async function init() {
       divergence: pipeline("divergence"),
       jacobiPressure: pipeline("jacobi_pressure"),
       subPressureGradient: pipeline("sub_pressure_gradient"),
-      addSource: pipeline("add_source"),
+      addDye: pipeline("add_dye"),
       transportDye: pipeline("transport_dye"),
       dissipate: pipeline("dissipate"),
       velocityBoundary: pipeline("velocity_boundary"),
@@ -428,34 +428,44 @@ function frame(time, state) {
   // --- compute part ---
 
   const dt = js_dt * time_scale;
-  state.computeConstView.setFloat32(76, dt, true);
+  state.computeConstView.setFloat32(72, dt, true);
 
   const aspect_ratio = canvas.clientWidth / canvas.clientHeight;
-  const r_delta_x = simulation_width / aspect_ratio;
-  const r_delta_y = simulation_height;
-  const sq_r_delta_x = r_delta_x * r_delta_x;
-  const sq_r_delta_y = r_delta_y * r_delta_y;
-  const sq_delta_x = 1.0 / sq_r_delta_x;
-  const sq_delta_y = 1.0 / sq_r_delta_y;
-  const laplace_diagonal = -2 * (sq_r_delta_x + sq_r_delta_y);
 
-  state.computeConstView.setFloat32(16, 1 / laplace_diagonal, true);
+  state.computeConstView.setFloat32(68, aspect_ratio, true);
+
+  const vel_r_delta_x = velocity_res.x / aspect_ratio;
+  const vel_r_delta_y = velocity_res.y;
+  const vel_sq_r_delta_x = vel_r_delta_x * vel_r_delta_x;
+  const vel_sq_r_delta_y = vel_r_delta_y * vel_r_delta_y;
+  const vel_sq_delta_x = 1.0 / vel_sq_r_delta_x;
+  const vel_sq_delta_y = 1.0 / vel_sq_r_delta_y;
+  const laplace_diagonal = -2 * (vel_sq_r_delta_x + vel_sq_r_delta_y);
+
+  state.computeConstView.setFloat32(76, 1 / laplace_diagonal, true);
   state.computeConstView.setFloat32(
-    20,
-    sq_delta_y / (2 * (sq_delta_x + sq_delta_y)),
+    80,
+    vel_sq_delta_y / (2 * (vel_sq_delta_x + vel_sq_delta_y)),
     true,
   );
   state.computeConstView.setFloat32(
-    24,
-    sq_delta_x / (2 * (sq_delta_x + sq_delta_y)),
+    84,
+    vel_sq_delta_x / (2 * (vel_sq_delta_x + vel_sq_delta_y)),
     true,
   );
 
-  state.computeConstView.setFloat32(48, r_delta_x, true);
-  state.computeConstView.setFloat32(52, r_delta_y, true);
-  state.computeConstView.setFloat32(56, 0.5 * r_delta_x, true);
-  state.computeConstView.setFloat32(60, 0.5 * r_delta_y, true);
-  state.computeConstView.setFloat32(64, aspect_ratio, true);
+  state.computeConstView.setFloat32(16, vel_r_delta_x, true);
+  state.computeConstView.setFloat32(20, vel_r_delta_y, true);
+  state.computeConstView.setFloat32(24, 0.5 * vel_r_delta_x, true);
+  state.computeConstView.setFloat32(28, 0.5 * vel_r_delta_y, true);
+
+  const dye_r_delta_x = dye_res.x / aspect_ratio;
+  const dye_r_delta_y = dye_res.y;
+
+  state.computeConstView.setFloat32(48, dye_r_delta_x, true);
+  state.computeConstView.setFloat32(52, dye_r_delta_y, true);
+  state.computeConstView.setFloat32(56, 0.5 * dye_r_delta_x, true);
+  state.computeConstView.setFloat32(60, 0.5 * dye_r_delta_y, true);
 
   state.device.queue.writeBuffer(
     state.computeConstBuffer,
@@ -476,7 +486,7 @@ function frame(time, state) {
 
   computePassEncoder.setPipeline(state.pipelines.velocityBoundary);
   computePassEncoder.dispatchWorkgroups(
-    max(velocity_res.x, velocity_res.y) / 64,
+    Math.max(velocity_res.x, velocity_res.y) / 64,
   );
 
   computePassEncoder.setPipeline(state.pipelines.transportVelocity);
@@ -486,7 +496,7 @@ function frame(time, state) {
 
   computePassEncoder.setPipeline(state.pipelines.velocityBoundary);
   computePassEncoder.dispatchWorkgroups(
-    max(velocity_res.x, velocity_res.y) / 64,
+    Math.max(velocity_res.x, velocity_res.y) / 64,
   );
 
   computePassEncoder.setPipeline(state.pipelines.divergence);
@@ -497,7 +507,7 @@ function frame(time, state) {
   for (let i = 0; i < jacobi_iterations; ++i) {
     computePassEncoder.setPipeline(state.pipelines.pressureBoundary);
     computePassEncoder.dispatchWorkgroups(
-      max(velocity_res.x, velocity_res.y) / 64,
+      Math.max(velocity_res.x, velocity_res.y) / 64,
     );
 
     computePassEncoder.setPipeline(state.pipelines.jacobiPressure);
@@ -508,14 +518,14 @@ function frame(time, state) {
 
   computePassEncoder.setPipeline(state.pipelines.pressureBoundary);
   computePassEncoder.dispatchWorkgroups(
-    max(velocity_res.x, velocity_res.y) / 64,
+    Math.max(velocity_res.x, velocity_res.y) / 64,
   );
 
   computePassEncoder.setPipeline(state.pipelines.subPressureGradient);
   computePassEncoder.dispatchWorkgroups(...velocity_workgroups);
 
   if (mouseIsDown) {
-    computePassEncoder.setPipeline(state.pipelines.addSource);
+    computePassEncoder.setPipeline(state.pipelines.addDye);
     computePassEncoder.dispatchWorkgroups(...dye_workgroups);
   }
 
@@ -531,18 +541,14 @@ function frame(time, state) {
 
   // --- render part ---
 
-  state.renderParamsView.setUint32(0, canvas.width, true);
-  state.renderParamsView.setUint32(4, canvas.height, true);
-  state.device.queue.writeBuffer(
-    state.renderParamsBuffer,
-    0,
-    state.renderParams,
-  );
+  state.renderConstView.setUint32(0, canvas.width, true);
+  state.renderConstView.setUint32(4, canvas.height, true);
+  state.device.queue.writeBuffer(state.renderConstBuffer, 0, state.renderConst);
 
   const renderPassDescriptor = {
     colorAttachments: [
       {
-        clearValue: { r: 0.906, g: 0.875, b: 0.875, a: 1.0 },
+        clearValue: { r: 0.851, g: 0.8157, b: 0.8157, a: 1.0 },
         loadOp: "clear",
         storeOp: "store",
         view: canvasContext.getCurrentTexture().createView(),
@@ -561,8 +567,13 @@ function frame(time, state) {
 
   if (cnt % 41 == 0) {
     // debug_buffer(
+    //   state.data.u[state.parity.u],
+    //   (velocity_res.x + 2) * (velocity_res.y + 2) * 8,
+    //   state.device,
+    // );
+    // debug_buffer(
     //   state.data.s[state.parity.s],
-    //   (simulation_width + 2) * (simulation_height + 2) * 16,
+    //   (dye_res.x + 2) * (dye_res.y + 2) * 16,
     //   state.device,
     // );
   }
@@ -588,12 +599,9 @@ async function debug_buffer(input, size, device) {
   const out = copyArrayBuffer.slice();
   buffer.unmap();
   let arr = new Float32Array(out);
-  // console.log(arr);
-  console.log(arr.every((x) => x === 0));
-  console.log(
-    arr[simulation_height * simulation_width],
-    arr[simulation_height * simulation_width + 1],
-  );
+  // console.log(arr.slice()[10000]);
+  console.log(arr.slice(10000).every((x) => x === 0));
+  console.log(arr.length);
 }
 
 async function debug_texture(input, width, height, device) {

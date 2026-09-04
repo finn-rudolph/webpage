@@ -2,17 +2,18 @@ struct Grid {
     res: vec2u,
     buf_size: vec2u,
     r_delta: vec2f,
-} // size = 24
+    half_r_delta: vec2f,
+} // size = 32
 
 struct Constants {
     velocity_grid: Grid,
-    dye_grid: Grid,                                 // 24
-    dissipation_rate: f32,                          // 48
-    aspect_ratio: f32,                              // 52
-    dt: f32,                                        // 56
-    jacobi_rhs: f32,                                // 60
-    jacobi_x: f32,                                  // 64
-    jacobi_y: f32,                                  // 68
+    dye_grid: Grid,                                 // 32
+    dissipation_rate: f32,                          // 64
+    aspect_ratio: f32,                              // 68
+    dt: f32,                                        // 72
+    jacobi_rhs: f32,                                // 76
+    jacobi_x: f32,                                  // 80
+    jacobi_y: f32,                                  // 84
 }
 
 struct Mouse {
@@ -127,33 +128,37 @@ fn transport_velocity(
     let i = buffer_index(id.xy, c.velocity_grid);
     let nc = normalized_coords(id.xy, c.velocity_grid);
     let k1 = -c.dt * u0[i];
-    let k2 = -c.dt * interpolate_u0(grid_coords(nc + 0.5 * k1, c.velocity_grid));
-    let previous_position = grid_coords(nc + k2, c.velocity_grid);
+    let k2 = -c.dt * interpolate_u0(grid_coords(clamp(nc + 0.5 * k1), c.velocity_grid));
+    let previous_position = grid_coords(clamp(nc + k2), c.velocity_grid);
     u1[i] = interpolate_u0(previous_position) * c.dissipation_rate;
 }
 
 @compute @workgroup_size(8, 8)
 fn divergence(@builtin(global_invocation_id) id: vec3u) {
     let i = buffer_index(id.xy, c.velocity_grid);
-    u_divergence[i] = 0.5 * ((u0[i + 1].x - u0[i - 1].x) * c.velocity_grid.r_delta.x
-        + (u0[i + c.velocity_grid.buf_size.x].y - u0[i - c.velocity_grid.buf_size.x].y) * c.velocity_grid.r_delta.y);
+    u_divergence[i] = (u0[i + 1].x - u0[i - 1].x) * c.velocity_grid.half_r_delta.x
+        + (u0[i + c.velocity_grid.buf_size.x].y - u0[i - c.velocity_grid.buf_size.x].y) * c.velocity_grid.half_r_delta.y;
 }
 
 @compute @workgroup_size(8, 8)
 fn jacobi_pressure(@builtin(global_invocation_id) id: vec3u) {
     let i = buffer_index(id.xy, c.velocity_grid);
 
-    p1[i] = c.j_pressure.rhs * u_divergence[i]
-    + c.j_pressure.x * (p0[i + 1] + p0[i - 1])
-    + c.j_pressure.y * (p0[i + c.velocity_grid.buf_size.x] + p0[i - c.velocity_grid.buf_size.x]);
+    p1[i] = c.jacobi_rhs * u_divergence[i]
+    + c.jacobi_x * (p0[i + 1] + p0[i - 1])
+    + c.jacobi_y * (p0[i + c.velocity_grid.buf_size.x] + p0[i - c.velocity_grid.buf_size.x]);
+}
+
+fn clamp(nc: vec2f) -> vec2f {
+    return max(vec2f(0.0, 0.0), min(vec2f(c.aspect_ratio, 1.0), nc));
 }
 
 @compute @workgroup_size(8, 8)
 fn sub_pressure_gradient(@builtin(global_invocation_id) id: vec3u) {
     let i = buffer_index(id.xy, c.velocity_grid);
-    let del_x = (p0[i + 1] - p0[i - 1]) * c.velocity_grid.r_delta.x;
-    let del_y = (p0[i + c.velocity_grid.buf_size.x] - p0[i - c.velocity_grid.buf_size.x]) * c.velocity_grid.r_delta.y;
-    u0[i] -= 0.5 * vec2f(del_x, del_y);
+    let del_x = (p0[i + 1] - p0[i - 1]) * c.velocity_grid.half_r_delta.x;
+    let del_y = (p0[i + c.velocity_grid.buf_size.x] - p0[i - c.velocity_grid.buf_size.x]) * c.velocity_grid.half_r_delta.y;
+    u0[i] -= vec2f(del_x, del_y);
 }
 
 @compute @workgroup_size(64)
@@ -189,12 +194,10 @@ fn velocity_boundary(@builtin(global_invocation_id) id: vec3u) {
 }
 
 @compute @workgroup_size(8, 8)
-fn add_source(@builtin(global_invocation_id) id: vec3u) {
+fn add_dye(@builtin(global_invocation_id) id: vec3u) {
     let nc = normalized_coords(id.xy, c.dye_grid);
     let sq_d = dot(nc - mouse.position, nc - mouse.position);
     if sq_d < mouse.sq_radius {
-        // the delta_x_delta_y ensures that the total amount of dye added does not depend on the size
-        // of the simulation grid.
         let i = buffer_index(id.xy, c.dye_grid);
         s0[i] += 0.1 * mouse.color * (mouse.sq_radius - sq_d) / mouse.sq_radius;
     }
@@ -207,15 +210,15 @@ fn transport_dye(
     let nc = normalized_coords(id.xy, c.dye_grid);
     let velocity_grid_coords = grid_coords(nc, c.velocity_grid);
     let k1 = -c.dt * interpolate_u0(velocity_grid_coords);
-    let k2 = -c.dt * interpolate_u0(grid_coords(nc + 0.5 * k1, c.velocity_grid));
-    let previous_position = grid_coords(nc + k2, c.dye_grid);
+    let k2 = -c.dt * interpolate_u0(grid_coords(clamp(nc + 0.5 * k1), c.velocity_grid));
+    let previous_position = grid_coords(clamp(nc + k2), c.dye_grid);
     s1[buffer_index(id.xy, c.dye_grid)] = interpolate_s0(previous_position);
 }
 
 // traces a particle at `ìnitial_position` backwards through `u0` for time `params.dt`
 // and returns the position in normalized coords.
 // `initial_position` should be in normalized coordinates.
-fn trace_particle(initial_position: vec2f) -> vec2f {
+// fn trace_particle(initial_position: vec2f) -> vec2f {
     // Euler
 
     // let nc = normalized_coords(initial_position);
@@ -248,11 +251,11 @@ fn trace_particle(initial_position: vec2f) -> vec2f {
 
     // second-order Runge-Kutta
 
-    let velocity_grid_coords = grid_coords(initial_position, c.velocity_grid);
-    let k1 = -c.dt * interpolate_u0(velocity_grid_coords);
-    let k2 = -c.dt * interpolate_u0(grid_coords(initial_position + 0.5 * k1, c.velocity_grid));
-    return max(vec2f(0.0, 0.0), min(vec2f(c.aspect_ratio, 1.0), initial_position + k2));
-}
+//     let velocity_grid_coords = grid_coords(initial_position, c.velocity_grid);
+//     let k1 = -c.dt * interpolate_u0(velocity_grid_coords);
+//     let k2 = -c.dt * interpolate_u0(grid_coords(initial_position + 0.5 * k1, c.velocity_grid));
+//     return max(vec2f(0.0, 0.0), min(vec2f(c.aspect_ratio, 1.0), initial_position + k2));
+// }
 
 @compute @workgroup_size(8, 8)
 fn dissipate(@builtin(global_invocation_id) id: vec3u) {

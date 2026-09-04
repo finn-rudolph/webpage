@@ -13,18 +13,18 @@ fn mix2d_vec4f(a00: vec4f, a01: vec4f, a10: vec4f, a11: vec4f, w: vec2f) -> vec4
     return mix(mix(a00, a01, w.y), mix(a10, a11, w.y), w.x);
 }
 
-fn simulation_coords(pixel_coords: vec2f) -> vec2f {
-    return vec2f(c.dye_res) * (pixel_coords / vec2f(f32(c.pixel_res.x), f32(c.pixel_res.y)));
+fn grid_coords(pixel_coords: vec2f) -> vec2f {
+    return vec2f(c.dye_res) * (pixel_coords / vec2f(c.pixel_res));
 }
 
 fn interpolate_s(coords: vec2f) -> vec4f {
     let upper_left = vec2u(coords + vec2f(0.5, 0.5));
     let mix_weight = coords + vec2f(0.5, 0.5) - vec2f(upper_left);
 
-    let width = c.dye_res.x + 2;
-    let i = upper_left.y * width + upper_left.x;
+    let buf_size_x = c.dye_res.x + 2;
+    let i = upper_left.y * buf_size_x + upper_left.x;
 
-    return mix2d_vec4f(s[i], s[i + width], s[i + 1], s[i + width + 1], mix_weight);
+    return mix2d_vec4f(s[i], s[i + buf_size_x], s[i + 1], s[i + buf_size_x + 1], mix_weight);
 }
 
 @vertex
@@ -35,8 +35,8 @@ fn vertex(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
 
 @fragment
 fn fragment(@builtin(position) position: vec4f) -> @location(0) vec4f {
-    let coords = simulation_coords(position.xy);
+    let coords = grid_coords(position.xy);
     let dye = interpolate_s(coords);
     let max_color = max(dye.r, max(dye.g, dye.b));
-    return vec4f(0.8510, 0.8157, 0.8157, 1.0) - dye / max(max_color, 1.0);
+    return vec4f(1, 1, 1, 1.0) - dye / max(max_color, 1.0);
 }
