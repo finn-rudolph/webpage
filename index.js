@@ -9,13 +9,13 @@ function splash(state, time) {
   if (t0 === null) {
     t0 = time;
     state.mouse.isDown = true;
-    setMousePos(state, 0, 0.5 * canvas.clientHeight);
+    setMousePos(state, 0, 0);
     state.mouse.color = colors[Math.floor(Math.random() * colors.length)];
   } else if (time - t0 > animationLength) {
     state.mouse.isDown = false;
   } else {
     let a = (time - t0) / animationLength;
-    setMousePos(state, a * canvas.clientWidth, 0.5 * canvas.clientHeight);
+    setMousePos(state, a * canvas.clientWidth, a * canvas.clientHeight);
   }
 
   if (time - t0 > 10000) {

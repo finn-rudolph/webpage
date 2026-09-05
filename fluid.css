@@ -31,13 +31,13 @@ button {
     padding: 0;
 }
 
-info div {
-    margin-bottom: 0.7rem;
+#info div {
+    margin-bottom: 0.5rem;
     margin-right: 1rem;
 }
 
 p {
-    line-height: 0;
+    margin: 0.3rem 0;
 }
 
 .hidden {
