@@ -29,6 +29,13 @@ canvas.addEventListener("pointermove", (event) => {
   setMousePos(initialState, event.offsetX, event.offsetY);
 });
 
+const aboutThisButton = document.querySelector("#aboutThis");
+const aboutThisContent = document.querySelector("#info div");
+
+aboutThisButton.addEventListener("click", () => {
+  aboutThisContent.classList.toggle("hidden");
+});
+
 function updateMouse(state, time) {
   state.mouse.isDown = mouseIsDown;
   state.mouse.color = color;

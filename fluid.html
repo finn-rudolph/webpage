@@ -20,15 +20,22 @@
     <body>
         <main>
             <canvas id="fluidCanvas"></canvas>
-            <button id="aboutThis"">about this</button>
-            <div id="explanation">
-                <p>
-                    this simulation was built with WebGPU. The code and references are
-                    on my <a href="https://github.com/finn-rudolph/webpage">github</a>.
-                </p>
-                <p>
-                    do you have a strong GPU? Then try the <button>ultra-high resolution mode</button>.
-                </p>
+            <div id="info">
+                <div class="hidden">
+                    <p>
+                        this simulation was built with WebGPU. The code and
+                        references are on my
+                        <a href="https://github.com/finn-rudolph/webpage"
+                            >github</a
+                        >.
+                    </p>
+                    <p>
+                        do you have a strong GPU? Then try the
+                        <button id="highRes">ultra-high resolution mode</button
+                        >.
+                    </p>
+                </div>
+                <button id="aboutThis">about this</button>
             </div>
         </main>
     </body>

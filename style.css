@@ -24,11 +24,6 @@ canvas {
     z-index: 1;
 }
 
-a {
-    color: inherit;
-    text-decoration: underline;
-}
-
 #name {
     margin-bottom: 2rem;
 }

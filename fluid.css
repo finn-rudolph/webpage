@@ -11,14 +11,32 @@ canvas {
     z-index: 0;
 }
 
-#aboutThis {
+#info {
     position: absolute;
     z-index: 1;
+    bottom: 1rem;
+    left: 1rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: flex-start;
+}
+
+button {
     background-color: rgba(0, 0, 0, 0);
     border: none;
+    text-decoration: underline;
     font-family: inherit;
     font-size: inherit;
-    text-decoration: underline;
-    bottom: 1em;
-    right: 1em;
+    padding: 0;
+}
+
+info div {
+    border-bottom: 0.1rem solid #222;
+    margin-bottom: 0.7rem;
+    margin-right: 1rem;
+}
+
+.hidden {
+    display: none;
 }
