@@ -29,7 +29,7 @@ canvas.addEventListener("pointermove", (event) => {
   setMousePos(initialState, event.offsetX, event.offsetY);
 });
 
-const aboutThisButton = document.querySelector("#aboutThis");
+const aboutThisButton = document.querySelector("#about");
 const aboutThisContent = document.querySelector("#info div");
 
 aboutThisButton.addEventListener("click", () => {

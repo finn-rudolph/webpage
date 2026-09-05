@@ -8,3 +8,9 @@ a {
     color: inherit;
     text-decoration: underline;
 }
+
+#home {
+    position: absolute;
+    left: 1rem;
+    top: 1rem;
+}
