@@ -32,9 +32,12 @@ button {
 }
 
 info div {
-    border-bottom: 0.1rem solid #222;
     margin-bottom: 0.7rem;
     margin-right: 1rem;
+}
+
+p {
+    line-height: 0;
 }
 
 .hidden {

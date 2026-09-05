@@ -17,6 +17,10 @@ function splash(state, time) {
     let a = (time - t0) / animationLength;
     setMousePos(state, a * canvas.clientWidth, 0.5 * canvas.clientHeight);
   }
+
+  if (time - t0 > 10000) {
+    state.stop = true;
+  }
 }
 
 const initialState = await init();

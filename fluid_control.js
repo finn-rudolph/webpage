@@ -1,11 +1,11 @@
-import { init, frame, setMousePos, colors } from "./fluid.js";
+import { init, frame, setMousePos, colors, setRes } from "./fluid.js";
 
 const canvas = document.getElementById("fluidCanvas");
 
 let mouseIsDown = false;
 let color = { r: 0.0, g: 0.0, b: 0.0 };
 
-const initialState = await init();
+let initialState = await init();
 
 canvas.addEventListener("pointerdown", (event) => {
   mouseIsDown = true;
@@ -40,5 +40,19 @@ function updateMouse(state, time) {
   state.mouse.isDown = mouseIsDown;
   state.mouse.color = color;
 }
+
+const highResButton = document.querySelector("#highRes");
+let highResActive = false;
+
+highResButton.addEventListener("click", async () => {
+  aboutThisContent.classList.toggle("hidden");
+  if (!highResActive) {
+    highResActive = true;
+    initialState.stop = true;
+    setRes({ x: 768, y: 768 }, { x: 2048, y: 2048 });
+    initialState = await init();
+    requestAnimationFrame((time) => frame(time, initialState, updateMouse));
+  }
+});
 
 requestAnimationFrame((time) => frame(time, initialState, updateMouse));

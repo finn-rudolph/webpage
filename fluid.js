@@ -1,7 +1,4 @@
-let velocityRes = { x: 256, y: 256 };
-let dyeRes = { x: 1024, y: 1024 };
-
-const jacobiIterations = 60;
+const jacobiIterations = 80;
 
 const mouseRadius = 0.05; // radius of the mouse force
 const timeScale = 0.05; // the physical time step is `time_scale` * [browser time step in ms]
@@ -9,6 +6,9 @@ let forceStrength = 1.4;
 const decaySpeed = 0.008; // every frame we multiply by exp(-dt * decay_rate).
 
 const viewportCssPixels = window.innerWidth * window.innerHeight;
+
+export let velocityRes = { x: 256, y: 256 };
+export let dyeRes = { x: 1024, y: 1024 };
 
 if (viewportCssPixels < 600_000) {
   velocityRes = { x: 128, y: 128 };
@@ -31,8 +31,8 @@ export const colors = [
   };
 });
 
-const velocityWorkgroups = [velocityRes.x / 8, velocityRes.y / 8];
-const dyeWorkgroups = [dyeRes.x / 8, dyeRes.y / 8];
+let velocityWorkgroups = [velocityRes.x / 8, velocityRes.y / 8];
+let dyeWorkgroups = [dyeRes.x / 8, dyeRes.y / 8];
 
 const canvas = document.getElementById("fluidCanvas");
 const canvasContext = canvas.getContext("webgpu");
@@ -45,10 +45,18 @@ const renderCode = await fetch("render.wgsl", { cache: "no-store" }).then((r) =>
   r.text(),
 );
 
+export function setRes(newVelocityRes, newDyeRes) {
+  velocityRes = newVelocityRes;
+  dyeRes = newDyeRes;
+}
+
 export async function init() {
   if (!navigator.gpu) {
     throw Error("WebGPU not supported.");
   }
+
+  velocityWorkgroups = [velocityRes.x / 8, velocityRes.y / 8];
+  dyeWorkgroups = [dyeRes.x / 8, dyeRes.y / 8];
 
   const adapter = await navigator.gpu.requestAdapter();
   const device = await adapter.requestDevice();
@@ -373,6 +381,7 @@ export async function init() {
       arr: renderConstArr,
       view: renderConstView,
     },
+    stop: false,
   };
 }
 
@@ -390,6 +399,9 @@ export function frame(time, state, callback) {
   previous_time = time;
 
   callback(state, time);
+  if (state.stop) {
+    return;
+  }
 
   state.mouse.view.setFloat32(
     8,
