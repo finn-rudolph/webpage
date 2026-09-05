@@ -1,9 +1,9 @@
 const jacobiIterations = 80;
 
 const mouseRadius = 0.05; // radius of the mouse force
-const timeScale = 0.05; // the physical time step is `time_scale` * [browser time step in ms]
-let forceStrength = 1.4;
-const decaySpeed = 0.008; // every frame we multiply by exp(-dt * decay_rate).
+const timeScale = 0.02; // the physical time step is `time_scale` * [browser time step in ms]
+let forceStrength = 2;
+const decaySpeed = 0.03; // every frame we multiply by exp(-dt * decay_rate).
 
 const viewportCssPixels = window.innerWidth * window.innerHeight;
 
@@ -19,16 +19,6 @@ if (viewportCssPixels < 600_000) {
   dyeRes = { x: 768, y: 768 };
   forceStrength *= 0.7;
 }
-
-export const colors = [
-  0x73c6d9, 0x04bfbf, 0x038c8c, 0x89ccd0, 0x048abf, 0x08b1b8, 0xff73ce,
-].map((hex) => {
-  return {
-    r: ((hex >> 16) % 256) / 256,
-    g: ((hex >> 8) % 256) / 256,
-    b: (hex % 256) / 256,
-  };
-});
 
 let velocityWorkgroups = [velocityRes.x / 8, velocityRes.y / 8];
 let dyeWorkgroups = [dyeRes.x / 8, dyeRes.y / 8];

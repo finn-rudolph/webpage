@@ -198,7 +198,8 @@ fn update_dye(
 
     let sq_d = dot(previous_nc - mouse.position, previous_nc - mouse.position);
     if sq_d < mouse.sq_radius {
-        value = mix(value, 3 * c.dt * mouse.color * (mouse.sq_radius - sq_d) / mouse.sq_radius, 0.3);
+        // value += 6 * c.dt * mouse.color * (mouse.sq_radius - sq_d) / mouse.sq_radius;
+        value = mix(value, 30 * c.dt * mouse.color * (mouse.sq_radius - sq_d) / mouse.sq_radius, 0.2);
     }
     textureStore(s1, id.xy, value);
 }
