@@ -5,7 +5,8 @@ const jacobiIterations = 60;
 
 const mouseRadius = 0.05; // radius of the mouse force
 const timeScale = 0.05; // the physical time step is `time_scale` * [browser time step in ms]
-let forceStrength = 1.0;
+let forceStrength = 1.4;
+const decaySpeed = 0.006; // every frame we multiply by exp(-dt * decay_rate).
 
 const viewportCssPixels = window.innerWidth * window.innerHeight;
 
@@ -21,7 +22,7 @@ if (viewportCssPixels < 600_000) {
 
 export const colors = [
   0x73c6d9, 0x04bfbf, 0x038c8c, 0x89ccd0, 0x048abf, 0x08b1b8, 0xf2b705,
-  0xf28907,
+  0xf28907, 0xff73ce,
 ].map((hex) => {
   return {
     r: ((hex >> 16) % 256) / 256,
@@ -407,6 +408,7 @@ export function frame(time, state, callback) {
   state.mouse.view.setFloat32(16, 1.0 - state.mouse.color.r, true);
   state.mouse.view.setFloat32(20, 1.0 - state.mouse.color.g, true);
   state.mouse.view.setFloat32(24, 1.0 - state.mouse.color.b, true);
+  state.mouse.view.setFloat32(28, 0.8, true);
 
   state.device.queue.writeBuffer(state.mouse.buf, 0, state.mouse.arr);
 
@@ -420,11 +422,12 @@ export function frame(time, state, callback) {
 
   const dt = js_dt * timeScale;
   state.computeConst.view.setFloat32(68, dt, true);
+  state.computeConst.view.setFloat32(88, Math.exp(-dt * decaySpeed), true);
 
-  const aspect_ratio = canvas.clientWidth / canvas.clientHeight;
-  state.computeConst.view.setFloat32(64, aspect_ratio, true);
+  const aspectRatio = canvas.clientWidth / canvas.clientHeight;
+  state.computeConst.view.setFloat32(64, aspectRatio, true);
 
-  const vel_r_delta_x = velocityRes.x / aspect_ratio;
+  const vel_r_delta_x = velocityRes.x / aspectRatio;
   const vel_r_delta_y = velocityRes.y;
   const vel_sq_r_delta_x = vel_r_delta_x * vel_r_delta_x;
   const vel_sq_r_delta_y = vel_r_delta_y * vel_r_delta_y;
@@ -449,7 +452,7 @@ export function frame(time, state, callback) {
   state.computeConst.view.setFloat32(24, 0.5 * vel_r_delta_x, true);
   state.computeConst.view.setFloat32(28, 0.5 * vel_r_delta_y, true);
 
-  const dye_r_delta_x = dyeRes.x / aspect_ratio;
+  const dye_r_delta_x = dyeRes.x / aspectRatio;
   const dye_r_delta_y = dyeRes.y;
 
   state.computeConst.view.setFloat32(48, dye_r_delta_x, true);
@@ -533,7 +536,7 @@ export function frame(time, state, callback) {
   const renderPassDescriptor = {
     colorAttachments: [
       {
-        clearValue: { r: 0, g: 0, b: 0, a: 0 },
+        clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
         loadOp: "clear",
         storeOp: "store",
         view: canvasContext.getCurrentTexture().createView(),

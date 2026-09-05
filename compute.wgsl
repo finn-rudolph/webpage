@@ -30,6 +30,7 @@ struct Constants {
     jacobi_x: f32,                                  // 76
     jacobi_y: f32,                                  // 80
     force_strength: f32,                            // 84
+    decay_rate: f32,                                // 88
 }
 
 struct Mouse {
@@ -125,7 +126,7 @@ fn transport_dissipate_velocity(
     let k1 = -c.dt * u0[i];
     let k2 = -c.dt * interpolate_u0(grid_coords(clamp(nc + 0.5 * k1), c.velocity_grid));
     let previous_position = grid_coords(clamp(nc + k2), c.velocity_grid);
-    u1[i] = interpolate_u0(previous_position) * 0.995;
+    u1[i] = interpolate_u0(previous_position) * c.decay_rate;
 }
 
 @compute @workgroup_size(8, 8)
@@ -193,11 +194,12 @@ fn update_dye(
     let k1 = -c.dt * interpolate_u0(velocity_grid_coords);
     let k2 = -c.dt * interpolate_u0(grid_coords(clamp(nc + 0.5 * k1), c.velocity_grid));
     let previous_nc = clamp(nc + k2);
-    var value = textureSampleLevel(s0, linear_sampler, vec2f(previous_nc.x / c.aspect_ratio, previous_nc.y), 0.0) * 0.992;
+    var value = textureSampleLevel(s0, linear_sampler, vec2f(previous_nc.x / c.aspect_ratio, previous_nc.y), 0.0) * c.decay_rate;
+    value.a *= c.decay_rate;
 
     let sq_d = dot(previous_nc - mouse.position, previous_nc - mouse.position);
     if sq_d < mouse.sq_radius {
-        value += 0.1 * mouse.color * (mouse.sq_radius - sq_d) / mouse.sq_radius;
+        value += 0.17 * c.dt * mouse.color * (mouse.sq_radius - sq_d) / mouse.sq_radius;
     }
     textureStore(s1, id.xy, value);
 }
