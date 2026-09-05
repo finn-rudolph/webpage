@@ -6,7 +6,7 @@ const jacobiIterations = 60;
 const mouseRadius = 0.05; // radius of the mouse force
 const timeScale = 0.05; // the physical time step is `time_scale` * [browser time step in ms]
 let forceStrength = 1.4;
-const decaySpeed = 0.006; // every frame we multiply by exp(-dt * decay_rate).
+const decaySpeed = 0.008; // every frame we multiply by exp(-dt * decay_rate).
 
 const viewportCssPixels = window.innerWidth * window.innerHeight;
 
@@ -379,6 +379,12 @@ export async function init() {
 let previous_time = null;
 let previousMousePosition = { x: 0, y: 0 };
 
+// x, y are given in CSS pixels
+export function setMousePos(state, x, y) {
+  state.mouse.view.setFloat32(0, x / canvas.clientHeight, true); // this is correct (normalized coords)
+  state.mouse.view.setFloat32(4, y / canvas.clientHeight, true);
+}
+
 export function frame(time, state, callback) {
   const js_dt = previous_time === null ? 0 : time - previous_time;
   previous_time = time;
@@ -408,7 +414,6 @@ export function frame(time, state, callback) {
   state.mouse.view.setFloat32(16, 1.0 - state.mouse.color.r, true);
   state.mouse.view.setFloat32(20, 1.0 - state.mouse.color.g, true);
   state.mouse.view.setFloat32(24, 1.0 - state.mouse.color.b, true);
-  state.mouse.view.setFloat32(28, 0.8, true);
 
   state.device.queue.writeBuffer(state.mouse.buf, 0, state.mouse.arr);
 

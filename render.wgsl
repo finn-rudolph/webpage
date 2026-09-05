@@ -21,5 +21,5 @@ fn vertex(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
 @fragment
 fn fragment(@builtin(position) position: vec4f) -> @location(0) vec4f {
     let dye = textureSampleLevel(s, linear_sampler, position.xy / vec2f(c.pixel_res), 0.0);
-    return vec4f(mix(vec3f(0.898, 0.851, 0.8431), vec3f(1.0, 1.0, 1.0) - dye.rgb, dye.a), 1.0);
+    return vec4f(1.0, 1.0, 1.0, 1.0) - dye;
 }

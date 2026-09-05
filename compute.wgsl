@@ -195,11 +195,10 @@ fn update_dye(
     let k2 = -c.dt * interpolate_u0(grid_coords(clamp(nc + 0.5 * k1), c.velocity_grid));
     let previous_nc = clamp(nc + k2);
     var value = textureSampleLevel(s0, linear_sampler, vec2f(previous_nc.x / c.aspect_ratio, previous_nc.y), 0.0) * c.decay_rate;
-    value.a *= c.decay_rate;
 
     let sq_d = dot(previous_nc - mouse.position, previous_nc - mouse.position);
     if sq_d < mouse.sq_radius {
-        value += 0.17 * c.dt * mouse.color * (mouse.sq_radius - sq_d) / mouse.sq_radius;
+        value = mix(value, 3 * c.dt * mouse.color * (mouse.sq_radius - sq_d) / mouse.sq_radius, 0.3);
     }
     textureStore(s1, id.xy, value);
 }

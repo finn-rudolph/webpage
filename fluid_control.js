@@ -1,4 +1,4 @@
-import { init, frame, colors } from "./fluid.js";
+import { init, frame, setMousePos, colors } from "./fluid.js";
 
 const canvas = document.getElementById("fluidCanvas");
 
@@ -9,16 +9,7 @@ const initialState = await init();
 
 canvas.addEventListener("pointerdown", (event) => {
   mouseIsDown = true;
-  initialState.mouse.view.setFloat32(
-    0,
-    event.offsetX / canvas.clientHeight,
-    true,
-  ); // this is correct (normalized coords)
-  initialState.mouse.view.setFloat32(
-    4,
-    event.offsetY / canvas.clientHeight,
-    true,
-  );
+  setMousePos(initialState, event.offsetX, event.offsetY);
   color = colors[Math.floor(Math.random() * colors.length)];
 });
 
@@ -35,16 +26,7 @@ canvas.addEventListener("pointercancel", () => {
 });
 
 canvas.addEventListener("pointermove", (event) => {
-  initialState.mouse.view.setFloat32(
-    0,
-    event.offsetX / canvas.clientHeight,
-    true,
-  );
-  initialState.mouse.view.setFloat32(
-    4,
-    event.offsetY / canvas.clientHeight,
-    true,
-  );
+  setMousePos(initialState, event.offsetX, event.offsetY);
 });
 
 function updateMouse(state, time) {
