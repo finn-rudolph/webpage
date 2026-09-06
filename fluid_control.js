@@ -5,7 +5,6 @@ const canvas = document.getElementById("fluidCanvas");
 let mouseIsDown = false;
 let omega = 0.0;
 let c0 = 0.0;
-let freq = { r: 0.0, g: 0.0, b: 0.0 };
 
 let initialState = await init();
 
