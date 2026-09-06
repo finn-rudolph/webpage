@@ -109,10 +109,7 @@ fn add_force(
 ) {
     let nc = normalized_coords(id.xy, c.velocity_grid);
     let sq_d = dot(nc - mouse.position, nc - mouse.position);
-    if sq_d < mouse.sq_radius {
-        u0[buffer_index(id.xy, c.velocity_grid)] += (f32(mouse.sq_radius - sq_d) / mouse.sq_radius)
-            * mouse.displacement * c.force_strength;
-    }
+    u0[buffer_index(id.xy, c.velocity_grid)] += exp(-sq_d * c.force_strength / mouse.sq_radius) * mouse.displacement;
 }
 
 // The dissipation is not quite physical, but makes the fluid eventually calm down
@@ -126,7 +123,7 @@ fn transport_dissipate_velocity(
     let k1 = -c.dt * u0[i];
     let k2 = -c.dt * interpolate_u0(grid_coords(clamp(nc + 0.5 * k1), c.velocity_grid));
     let previous_position = grid_coords(clamp(nc + k2), c.velocity_grid);
-    u1[i] = interpolate_u0(previous_position) * c.decay_rate;
+    u1[i] = interpolate_u0(previous_position) * 0.996;
 }
 
 @compute @workgroup_size(8, 8)
@@ -194,12 +191,11 @@ fn update_dye(
     let k1 = -c.dt * interpolate_u0(velocity_grid_coords);
     let k2 = -c.dt * interpolate_u0(grid_coords(clamp(nc + 0.5 * k1), c.velocity_grid));
     let previous_nc = clamp(nc + k2);
-    var value = textureSampleLevel(s0, linear_sampler, vec2f(previous_nc.x / c.aspect_ratio, previous_nc.y), 0.0) * c.decay_rate;
+    var value = textureSampleLevel(s0, linear_sampler, vec2f(previous_nc.x / c.aspect_ratio, previous_nc.y), 0.0) * 0.99;
 
-    let sq_d = dot(previous_nc - mouse.position, previous_nc - mouse.position);
-    if sq_d < mouse.sq_radius {
-        // value += c.dt * mouse.color * (mouse.sq_radius - sq_d) / mouse.sq_radius;
-        value = mix(value, 20 * c.dt * mouse.color * (mouse.sq_radius - sq_d) / mouse.sq_radius, 0.3);
+    if mouse.sq_radius > 0 {
+        let sq_d = dot(previous_nc - mouse.position, previous_nc - mouse.position);
+        value += 0.3 * c.dt * exp(-sq_d / mouse.sq_radius) * mouse.color;
     }
     textureStore(s1, id.xy, value);
 }

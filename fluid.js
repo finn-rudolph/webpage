@@ -1,9 +1,9 @@
-const jacobiIterations = 80;
+const jacobiIterations = 20;
 
-const mouseRadius = 0.05; // radius of the mouse force
-const timeScale = 0.02; // the physical time step is `time_scale` * [browser time step in ms]
-let forceStrength = 2.4;
-const decaySpeed = 0.03; // every frame we multiply by exp(-dt * decay_rate).
+const mouseRadius = 0.04; // radius of the mouse force
+const timeScale = 0.1; // the physical time step is `time_scale` * [browser time step in ms]
+let forceStrength = 4.4;
+const decaySpeed = 0.0000001; // every frame we multiply by exp(-dt * decay_rate).
 
 const viewportCssPixels = window.innerWidth * window.innerHeight;
 
@@ -33,6 +33,26 @@ const computeCode = await fetch("compute.wgsl", { cache: "no-store" }).then(
 const renderCode = await fetch("render.wgsl", { cache: "no-store" }).then((r) =>
   r.text(),
 );
+
+// h, s, v all range from 0 to 1
+export function hsvToRgb(h, s, v) {
+  h *= 6;
+
+  const c = v * s;
+  const x = c * (1 - Math.abs((h % 2) - 1));
+  const m = v - c;
+
+  let r, g, b;
+
+  if (h < 1) [r, g, b] = [c, x, 0];
+  else if (h < 2) [r, g, b] = [x, c, 0];
+  else if (h < 3) [r, g, b] = [0, c, x];
+  else if (h < 4) [r, g, b] = [0, x, c];
+  else if (h < 5) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+
+  return { r: r + m, g: g + m, b: b + m };
+}
 
 export function setRes(newVelocityRes, newDyeRes) {
   velocityRes = newVelocityRes;

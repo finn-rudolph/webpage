@@ -1,8 +1,10 @@
-import { init, frame, setMousePos, setRes } from "./fluid.js";
+import { init, frame, setMousePos, setRes, hsvToRgb } from "./fluid.js";
 
 const canvas = document.getElementById("fluidCanvas");
 
 let mouseIsDown = false;
+let omega = 0.0;
+let c0 = 0.0;
 let freq = { r: 0.0, g: 0.0, b: 0.0 };
 
 let initialState = await init();
@@ -10,12 +12,9 @@ let initialState = await init();
 canvas.addEventListener("pointerdown", (event) => {
   mouseIsDown = true;
   setMousePos(initialState, event.offsetX, event.offsetY);
-  const time_scale = 200;
-  freq = {
-    r: Math.random() / time_scale,
-    g: Math.random() / time_scale,
-    b: Math.random() / time_scale,
-  };
+  const time_scale = 500;
+  omega = Math.random() / time_scale;
+  c0 = Math.random();
 });
 
 canvas.addEventListener("pointerup", () => {
@@ -43,11 +42,7 @@ aboutThisButton.addEventListener("click", () => {
 
 function updateMouse(state, time) {
   state.mouse.isDown = mouseIsDown;
-  state.mouse.color = {
-    r: (Math.sin(time * freq.r) + 2) / 3,
-    g: (Math.sin(time * freq.g) + 2) / 3,
-    b: (Math.sin(time * freq.b) + 2) / 3,
-  };
+  state.mouse.color = hsvToRgb((Math.sin(c0 + omega * time) + 1) / 2, 0.9, 1.0);
 }
 
 const highResButton = document.querySelector("#highRes");

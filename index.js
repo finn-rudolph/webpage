@@ -1,4 +1,4 @@
-import { init, frame, setMousePos } from "./fluid.js";
+import { init, frame, setMousePos, hsvToRgb } from "./fluid.js";
 
 const canvas = document.getElementById("fluidCanvas");
 
@@ -12,11 +12,7 @@ function splash(state, time) {
     t0 = time;
     state.mouse.isDown = true;
     setMousePos(state, 0, 0);
-    state.mouse.color = {
-      r: (Math.random() + 2) / 3,
-      g: (Math.random() + 2) / 3,
-      b: (Math.random() + 2) / 3,
-    };
+    state.mouse.color = hsvToRgb(Math.random(), 0.9, 1.0);
   } else if (time - t0 > animationLength) {
     state.mouse.isDown = false;
   } else {
