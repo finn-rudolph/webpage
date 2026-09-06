@@ -2,7 +2,7 @@ const jacobiIterations = 80;
 
 const mouseRadius = 0.05; // radius of the mouse force
 const timeScale = 0.02; // the physical time step is `time_scale` * [browser time step in ms]
-let forceStrength = 2;
+let forceStrength = 2.4;
 const decaySpeed = 0.03; // every frame we multiply by exp(-dt * decay_rate).
 
 const viewportCssPixels = window.innerWidth * window.innerHeight;

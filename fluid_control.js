@@ -10,7 +10,7 @@ let initialState = await init();
 canvas.addEventListener("pointerdown", (event) => {
   mouseIsDown = true;
   setMousePos(initialState, event.offsetX, event.offsetY);
-  const time_scale = 500;
+  const time_scale = 200;
   freq = {
     r: Math.random() / time_scale,
     g: Math.random() / time_scale,
@@ -44,9 +44,9 @@ aboutThisButton.addEventListener("click", () => {
 function updateMouse(state, time) {
   state.mouse.isDown = mouseIsDown;
   state.mouse.color = {
-    r: (Math.sin(time * freq.r) + 1) / 2,
-    g: (Math.sin(time * freq.g) + 1) / 2,
-    b: (Math.sin(time * freq.b) + 1) / 2,
+    r: (Math.sin(time * freq.r) + 2) / 3,
+    g: (Math.sin(time * freq.g) + 2) / 3,
+    b: (Math.sin(time * freq.b) + 2) / 3,
   };
 }
 
