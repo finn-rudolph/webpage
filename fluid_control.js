@@ -13,7 +13,7 @@ canvas.addEventListener("pointerdown", (event) => {
   mouseIsDown = true;
   setMousePos(initialState, event.offsetX, event.offsetY);
   const time_scale = 500;
-  omega = Math.random() / time_scale;
+  omega = (Math.random() + 0.2) / time_scale;
   c0 = Math.random();
 });
 

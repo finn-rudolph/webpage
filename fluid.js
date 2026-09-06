@@ -2,8 +2,9 @@ const jacobiIterations = 20;
 
 const mouseRadius = 0.04; // radius of the mouse force
 const timeScale = 0.1; // the physical time step is `time_scale` * [browser time step in ms]
-let forceStrength = 4.4;
-const decaySpeed = 0.0000001; // every frame we multiply by exp(-dt * decay_rate).
+let forceStrength = 4.0;
+const velocityDissipation = 0.004; // every frame we multiply by exp(-dt * decay_rate).
+const dyeDissipation = 0.01;
 
 const viewportCssPixels = window.innerWidth * window.innerHeight;
 
@@ -89,24 +90,19 @@ export async function init() {
   let mouseView = new DataView(mouseArr);
 
   let computeConstBuf = device.createBuffer({
-    size: 96,
+    size: 64,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
 
-  const computeConstArr = new ArrayBuffer(96);
+  const computeConstArr = new ArrayBuffer(64);
   const computeConstView = new DataView(computeConstArr);
 
   computeConstView.setUint32(0, velocityRes.x, true);
   computeConstView.setUint32(4, velocityRes.y, true);
-  computeConstView.setUint32(8, velocityRes.x + 2, true);
-  computeConstView.setUint32(12, velocityRes.y + 2, true);
+  computeConstView.setUint32(16, dyeRes.x, true);
+  computeConstView.setUint32(20, dyeRes.y, true);
 
-  computeConstView.setUint32(32, dyeRes.x, true);
-  computeConstView.setUint32(36, dyeRes.y, true);
-  computeConstView.setUint32(40, dyeRes.x + 2, true);
-  computeConstView.setUint32(44, dyeRes.y + 2, true);
-
-  computeConstView.setFloat32(84, forceStrength, true);
+  computeConstView.setFloat32(60, forceStrength, true);
 
   device.queue.writeBuffer(computeConstBuf, 0, computeConstArr);
 
@@ -447,11 +443,16 @@ export function frame(time, state, callback) {
   // --- compute part ---
 
   const dt = js_dt * timeScale;
-  state.computeConst.view.setFloat32(68, dt, true);
-  state.computeConst.view.setFloat32(88, Math.exp(-dt * decaySpeed), true);
+  state.computeConst.view.setFloat32(36, dt, true);
+  state.computeConst.view.setFloat32(
+    52,
+    Math.exp(-dt * velocityDissipation),
+    true,
+  );
+  state.computeConst.view.setFloat32(56, Math.exp(-dt * dyeDissipation), true);
 
   const aspectRatio = canvas.clientWidth / canvas.clientHeight;
-  state.computeConst.view.setFloat32(64, aspectRatio, true);
+  state.computeConst.view.setFloat32(32, aspectRatio, true);
 
   const vel_r_delta_x = velocityRes.x / aspectRatio;
   const vel_r_delta_y = velocityRes.y;
@@ -461,30 +462,26 @@ export function frame(time, state, callback) {
   const vel_sq_delta_y = 1.0 / vel_sq_r_delta_y;
   const laplace_diagonal = -2 * (vel_sq_r_delta_x + vel_sq_r_delta_y);
 
-  state.computeConst.view.setFloat32(72, 1 / laplace_diagonal, true);
+  state.computeConst.view.setFloat32(40, 1 / laplace_diagonal, true);
   state.computeConst.view.setFloat32(
-    76,
+    44,
     vel_sq_delta_y / (2 * (vel_sq_delta_x + vel_sq_delta_y)),
     true,
   );
   state.computeConst.view.setFloat32(
-    80,
+    48,
     vel_sq_delta_x / (2 * (vel_sq_delta_x + vel_sq_delta_y)),
     true,
   );
 
-  state.computeConst.view.setFloat32(16, vel_r_delta_x, true);
-  state.computeConst.view.setFloat32(20, vel_r_delta_y, true);
-  state.computeConst.view.setFloat32(24, 0.5 * vel_r_delta_x, true);
-  state.computeConst.view.setFloat32(28, 0.5 * vel_r_delta_y, true);
+  state.computeConst.view.setFloat32(8, vel_r_delta_x, true);
+  state.computeConst.view.setFloat32(12, vel_r_delta_y, true);
 
   const dye_r_delta_x = dyeRes.x / aspectRatio;
   const dye_r_delta_y = dyeRes.y;
 
-  state.computeConst.view.setFloat32(48, dye_r_delta_x, true);
-  state.computeConst.view.setFloat32(52, dye_r_delta_y, true);
-  state.computeConst.view.setFloat32(56, 0.5 * dye_r_delta_x, true);
-  state.computeConst.view.setFloat32(60, 0.5 * dye_r_delta_y, true);
+  state.computeConst.view.setFloat32(24, dye_r_delta_x, true);
+  state.computeConst.view.setFloat32(28, dye_r_delta_y, true);
 
   state.device.queue.writeBuffer(
     state.computeConst.buf,
