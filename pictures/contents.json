@@ -1,0 +1,10 @@
+{
+  "title": "Pictures",
+  "pictures": [
+    {
+      "file": ".",
+      "caption": "Boston, Cambridge",
+      "link": "boston.html"
+    }
+  ]
+}

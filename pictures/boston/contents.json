@@ -1,0 +1,15 @@
+{
+  "title": "Boston, Cambridge",
+  "pictures": [
+    {
+      "file": "car-sunset.webp",
+      "date": "Aug 29, 2026",
+      "location": "Back Bay, Boston"
+    },
+    {
+      "file": "birds.webp",
+      "date": "Aug 26, 2026",
+      "location": "Summer St, Boston"
+    }
+  ]
+}
