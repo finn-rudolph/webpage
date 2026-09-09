@@ -1,23 +1,26 @@
 .container {
-    width: min(90vw, 1000px);
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(400px, 50vw), 1fr));
-    gap: 50px;
-    margin: min(50px, 10vw) auto;
-}
-
-.container a {
-    display: block;
-    padding: 4px;
-}
-
-.container a:hover {
-    border: 3px solid #222;
+    display: flex;
+    flex-direction: column;
+    gap: 3rem;
+    align-items: center;
+    margin: 4rem auto;
 }
 
 .container img {
+    width: min(90vw, 600px);
+    border: 0px solid #fff;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+}
+
+.container img:hover {
+    border-width: 5px;
+    width: min(90vw, 600px);
+}
+
+.img-container {
+    display: flex;
+    flex-direction: column;
     width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
+    align-items: center;
 }
