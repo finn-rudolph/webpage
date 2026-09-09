@@ -1,7 +1,19 @@
 body {
-    font-family: "Cormorant", serif;
-    font-size: 1.2rem;
+    font-family: "Lora", serif;
+    font-size: 1.1rem;
     color: #222;
+}
+
+/*main {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}*/
+
+.content {
+    margin: 2rem;
+    max-width: 60rem;
+    justify-self: center;
 }
 
 a {
@@ -10,7 +22,21 @@ a {
 }
 
 #home {
-    position: absolute;
-    left: 1rem;
-    top: 1rem;
+    display: block;
+    margin-bottom: 3rem;
+}
+
+button {
+    background-color: rgba(0, 0, 0, 0);
+    border: none;
+    text-decoration: underline;
+    font-family: inherit;
+    font-size: inherit;
+    padding: 0;
+}
+
+h1,
+h2,
+h3 {
+    font-family: "Playfair Display", sans-serif;
 }

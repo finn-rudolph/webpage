@@ -22,13 +22,11 @@ canvas {
     align-items: flex-start;
 }
 
-button {
-    background-color: rgba(0, 0, 0, 0);
-    border: none;
-    text-decoration: underline;
-    font-family: inherit;
-    font-size: inherit;
-    padding: 0;
+#home {
+    position: absolute;
+    left: 1rem;
+    top: 1rem;
+    z-index: 1;
 }
 
 #info div {

@@ -5,12 +5,12 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Finn Rudolph</title>
 
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link
-            href="https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@0,300..700;1,300..700&display=swap"
+            href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap"
             rel="stylesheet"
-        />
+        >
 
         <link rel="stylesheet" href="base.css" />
         <link rel="stylesheet" href="style.css" />
@@ -21,11 +21,38 @@
     <body>
         <main>
             <canvas id="fluidCanvas"></canvas>
-            <div id="content">
+            <nav>
+                <button class="nav-toggle" aria-expanded="false" aria-label="toggle navigation">
+                    <svg class="compass-icon" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+
+                      <g stroke="#000" stroke-width="1" stroke-linejoin="round">
+                        <polygon points="150,150 137.27,137.27 150,20"  fill="#000"/>
+                        <polygon points="150,150 150,20 162.73,137.27"  fill="#fff"/>
+
+                        <polygon points="150,150 162.73,137.27 280,150" fill="#000"/>
+                        <polygon points="150,150 280,150 162.73,162.73" fill="#fff"/>
+
+                        <polygon points="150,150 162.73,162.73 150,280" fill="#000"/>
+                        <polygon points="150,150 150,280 137.27,162.73" fill="#fff"/>
+
+                        <polygon points="150,150 137.27,162.73 20,150"  fill="#000"/>
+                        <polygon points="150,150 20,150 137.27,137.27"  fill="#fff"/>
+                      </g>
+
+                    </svg>
+                    <span>navigation</span>
+                </button>
+                <ul>
+                <li><a href="research.html">Math & Research</a></li>
+                <li><a href="pictures.html">Photography</a></li>
+                <li><a href="fluid.html">Fluid simulation</a></li>
+                <ul>
+            </nav>
+            <div class="content">
                 <p id="name">Finn Rudolph</p>
                 <p>
                     hi! I'm currently a math phd student at
-                    <a href="https://math.mit.edu/">MIT</a>. More about my
+                    <a href="https://math.mit.edu/">MIT</a>. More math-related stuff and my
                     research can be found <a href="research.html">here</a>.
                 </p>
                 <p>
@@ -43,7 +70,6 @@
                     I also do <a href="pictures.html">photography</a> in my free
                     time.
                 </p>
-                <p>(This page is work in progress)</p>
             </div>
         </main>
     </body>
