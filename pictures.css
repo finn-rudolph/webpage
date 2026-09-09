@@ -1,3 +1,8 @@
+body {
+    background-color: #000;
+    color: #ddd;
+}
+
 .container {
     display: flex;
     flex-direction: column;
@@ -8,17 +13,20 @@
 
 .container img {
     width: min(90vw, 600px);
-    border: 0px solid #fff;
-    transition: all 0.2s ease;
-    box-sizing: border-box;
 }
 
-.container img:hover {
+.container a img {
+    box-sizing: border-box;
+    border: 0px solid #000;
+    transition: all 0.2s ease;
+}
+
+.container a img:hover {
     border-width: 5px;
     width: min(90vw, 600px);
 }
 
-.img-container {
+.img-with-caption {
     display: flex;
     flex-direction: column;
     width: 100%;

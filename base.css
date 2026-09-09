@@ -4,12 +4,6 @@ body {
     color: #222;
 }
 
-/*main {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}*/
-
 .content {
     margin: 2rem;
     max-width: 60rem;
@@ -21,9 +15,12 @@ a {
     text-decoration: underline;
 }
 
-#home {
-    display: block;
+.home {
     margin-bottom: 3rem;
+}
+
+.back {
+    margin-right: 0.7rem;
 }
 
 button {
@@ -33,6 +30,7 @@ button {
     font-family: inherit;
     font-size: inherit;
     padding: 0;
+    color: inherit;
 }
 
 h1,

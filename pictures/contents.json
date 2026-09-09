@@ -1,10 +1,10 @@
 {
-  "title": "Pictures",
+  "title": "Photography",
   "pictures": [
     {
-      "file": ".",
-      "caption": "Boston, Cambridge",
-      "link": "boston.html"
+      "file": "sunrise.webp",
+      "caption": "Boston / Cambridge",
+      "link": "boston"
     }
   ]
 }

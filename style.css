@@ -37,9 +37,9 @@ nav ul {
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: 1.6rem;
+    gap: 1.3rem;
     padding: 0rem;
-    margin-top: 2rem;
+    margin-top: 1.4rem;
     align-items: center;
 }
 
@@ -52,7 +52,6 @@ nav ul li {
 }
 
 li a {
-    /*background: #fff;*/
     padding: 0.5rem;
 }
 
@@ -65,24 +64,13 @@ li a {
     display: flex;
     align-items: center;
     gap: 1rem;
+    text-decoration: none;
 }
 
 nav.open ul li {
     opacity: 1;
     transform: translateY(0);
 }
-
-nav span {
-    transition: all 0.4s ease;
-    transform: translateX(0px);
-    opacity: 1;
-}
-
-/*nav.open span {
-    opacity: 0;
-    transform: translateX(-10px);
-    max-width: 0;
-}*/
 
 .nav-toggle[aria-expanded="true"] .compass-icon {
     transform: rotate(90deg);
