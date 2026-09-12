@@ -2,9 +2,19 @@
   "title": "Boston / Cambridge",
   "pictures": [
     {
+      "file": "beacon-hill-sunset.webp",
+      "date": "Sep 11, 2026",
+      "location": "Myrtle St, Boston"
+    },
+    {
+      "file": "smoke.webp",
+      "date": "Sep 11, 2026",
+      "location": "Essex St, Boston"
+    },
+    {
       "file": "car-sunset.webp",
       "date": "Aug 29, 2026",
-      "location": "Back Bay, Boston"
+      "location": "Boylston St, Boston"
     },
     {
       "file": "birds.webp",
