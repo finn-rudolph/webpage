@@ -8,11 +8,10 @@ body {
     flex-direction: column;
     gap: 3rem;
     align-items: center;
-    margin: 4rem auto;
 }
 
 .container img {
-    width: min(90vw, 600px);
+    width: 100%;
 }
 
 .container a img {
@@ -23,7 +22,7 @@ body {
 
 .container a img:hover {
     border-width: 5px;
-    width: min(90vw, 600px);
+    width: 100%;
 }
 
 .img-with-caption {

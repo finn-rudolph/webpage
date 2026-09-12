@@ -4,59 +4,69 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Finn Rudolph</title>
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap"
+            rel="stylesheet"
+        />
 
         <link rel="stylesheet" href="base.css" />
-        <link rel="stylesheet" href="style.css" />
+        <link rel="stylesheet" href="index.css" />
         <script defer type="module" src="fluid.js"></script>
         <script defer type="module" src="index.js"></script>
+
         <link rel="icon" type="image/svg+xml" href="/milkyway.svg" />
     </head>
     <body>
         <main>
             <canvas id="fluidCanvas"></canvas>
-            <nav>
-                <ul>
-                <li><a href="research.html">Math & Research
-                    <svg xmlns="http://www.w3.org/2000/svg" height="12px" viewBox="0 -960 960 960" width="12px" fill="currentColor">
-                                        <path d="m243-240-51-51 405-405H240v-72h480v480h-72v-357L243-240Z"></path>
-                    </svg></a></li>
-                <li><a href="pictures/pictures.html">Photography<svg xmlns="http://www.w3.org/2000/svg" height="12px" viewBox="0 -960 960 960" width="12px" fill="currentColor">
-                                    <path d="m243-240-51-51 405-405H240v-72h480v480h-72v-357L243-240Z"></path>
-                </svg></a></li>
-                <li><a href="fluid.html">Fluid simulation<svg xmlns="http://www.w3.org/2000/svg" height="12px" viewBox="0 -960 960 960" width="12px" fill="currentColor">
-                                    <path d="m243-240-51-51 405-405H240v-72h480v480h-72v-357L243-240Z"></path>
-                </svg></a></li>
-                <ul>
-                </ul>
-            </nav>
             <div class="content">
-                <p id="name">Finn Rudolph</p>
-                <p>
-                    hi! I'm currently a math phd student at
-                    <a href="https://math.mit.edu/">MIT</a>.
-                    More math-related stuff and my
-                    research can be found <a href="research.html">here</a>.
-                </p>
-                <p>
-                    Before, I studied math as an undergrad at the
-                    <a href="https://www.mathematics.uni-bonn.de/en"
-                    >University of Bonn</a
-                >.
-                </p>
-                <p>
-                    I love coding. For example, this
-                    <a href="fluid.html">fluid simulation</a>. Most of my code
-                    is on <a href="https://github.com/finn-rudolph">github</a>.
-                </p>
-                <p>
-                    I also do <a href="pictures/pictures.html">photography</a> in my free
-                    time.
-                </p>
-
+                <nav>
+                    <ul>
+                        <li>
+                            <a class="link-arrow" href="research.html"
+                                >Math & Research</a
+                            >
+                        </li>
+                        <li>
+                            <a class="link-arrow" href="pictures/pictures.html"
+                                >Photography</a
+                            >
+                        </li>
+                        <li>
+                            <a class="link-arrow" href="fluid.html"
+                                >Fluid simulation</a
+                            >
+                        </li>
+                    </ul>
                 </nav>
+                <div class="personal-info">
+                    <p id="name">Finn Rudolph</p>
+                    <p>
+                        hi! I'm currently a math phd student at
+                        <a href="https://math.mit.edu/">MIT</a>. My research and
+                        other math-related stuff can be found
+                        <a href="research.html">here</a>.
+                    </p>
+                    <p>
+                        Before, I studied mathematics as an undergrad at the
+                        <a href="https://www.mathematics.uni-bonn.de/en"
+                            >University of Bonn</a
+                        >.
+                    </p>
+                    <p>
+                        I love coding. For example, this
+                        <a href="fluid.html">fluid simulation</a>. Most of my
+                        code is on
+                        <a href="https://github.com/finn-rudolph">github</a>.
+                    </p>
+                    <p>
+                        I also do
+                        <a href="pictures/pictures.html">photography</a> in my
+                        free time.
+                    </p>
+                </div>
             </div>
         </main>
     </body>

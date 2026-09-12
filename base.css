@@ -7,7 +7,7 @@ body {
 
 .content {
     margin: 2rem;
-    max-width: min(700px, 90vw);
+    max-width: min(800px, 90vw);
     justify-self: center;
 }
 
@@ -18,10 +18,24 @@ a {
 
 .home {
     margin-bottom: 2.5rem;
+    text-decoration: none;
+    color: inherit;
+}
+
+.home::after,
+.link-arrow::after {
+    content: "";
+    display: inline-block;
+    width: 0.75rem;
+    height: 0.75rem;
+    background-color: currentColor;
+    mask: url("link-arrow.svg") center / contain no-repeat;
+    -webkit-mask: url("link-arrow.svg") center / contain no-repeat;
 }
 
 .back {
     margin-right: 0.7rem;
+    text-decoration: none;
 }
 
 button {

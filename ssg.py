@@ -34,7 +34,7 @@ for path in Path("./pictures").rglob("**/contents.json"):
 
     back_link = ""
     if path.parent.name != "pictures":
-        back_link = f'<a class="back" href="/{path.parent.parent}/{path.parent.parent.name}.html">&#x21A9; back</a>'
+        back_link = f'<a class="back" href="/{path.parent.parent}/{path.parent.parent.name}.html">back &#x21A9; </a>'
 
     with open(
         str(path.parent) + "/" + path.parent.name + ".html", "w", encoding="utf-8"
