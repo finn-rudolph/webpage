@@ -10,7 +10,11 @@ let initialState = await init();
 
 canvas.addEventListener("pointerdown", (event) => {
   mouseIsDown = true;
-  setMousePos(initialState, event.offsetX, event.offsetY);
+  setMousePos(
+    initialState,
+    event.offsetX / canvas.clientHeight,
+    event.offsetY / canvas.clientHeight,
+  );
   const time_scale = 500;
   omega = (Math.random() + 0.2) / time_scale;
   c0 = Math.random();
@@ -29,7 +33,11 @@ canvas.addEventListener("pointercancel", () => {
 });
 
 canvas.addEventListener("pointermove", (event) => {
-  setMousePos(initialState, event.offsetX, event.offsetY);
+  setMousePos(
+    initialState,
+    event.offsetX / canvas.clientHeight,
+    event.offsetY / canvas.clientHeight,
+  );
 });
 
 const aboutThisButton = document.querySelector("#about");

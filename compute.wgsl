@@ -195,8 +195,7 @@ fn update_dye(
 
     if mouse.sq_radius > 0 {
         let sq_d = dot(previous_nc - mouse.position, previous_nc - mouse.position);
-        // value += 0.2 * c.dt * exp(-sq_d / mouse.sq_radius) * mouse.color;
-        value += c.dt * exp(-sq_d / mouse.sq_radius) * mouse.color;
+        value += c.dt * exp(-sq_d / mouse.sq_radius) * mouse.color * c.force_strength * 0.25;
         value /= max(1.0, max(value.r, max(value.g, value.b)) / 4);
     }
 

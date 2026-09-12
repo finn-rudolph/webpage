@@ -1,6 +1,6 @@
 const jacobiIterations = 20;
 
-const mouseRadius = 0.04; // radius of the mouse force
+let mouseRadius = 0.04; // radius of the mouse force
 const timeScale = 0.1; // the physical time step is `time_scale` * [browser time step in ms]
 let forceStrength = 4.0;
 const velocityDissipation = 0.003; // every frame we multiply by exp(-dt * decay_rate).
@@ -14,7 +14,8 @@ export let dyeRes = { x: 1024, y: 1024 };
 if (viewportCssPixels < 600_000) {
   velocityRes = { x: 128, y: 128 };
   dyeRes = { x: 512, y: 512 };
-  forceStrength *= 0.5;
+  forceStrength *= 0.4;
+  mouseRadius = 0.03;
 } else if (viewportCssPixels < 1_200_000) {
   velocityRes = { x: 192, y: 192 };
   dyeRes = { x: 768, y: 768 };
@@ -393,10 +394,10 @@ export async function init() {
 let previous_time = null;
 let previousMousePosition = { x: 0, y: 0 };
 
-// x, y are given in CSS pixels
+// x, y are given in normalized coordinates
 export function setMousePos(state, x, y) {
-  state.mouse.view.setFloat32(0, x / canvas.clientHeight, true); // this is correct (normalized coords)
-  state.mouse.view.setFloat32(4, y / canvas.clientHeight, true);
+  state.mouse.view.setFloat32(0, x, true);
+  state.mouse.view.setFloat32(4, y, true);
 }
 
 export function frame(time, state, callback) {
