@@ -3,10 +3,11 @@ body {
 }
 
 main {
-    min-height: 100vh;
     display: flex;
-    justify-content: center;
+    flex-direction: column;
     align-items: center;
+    width: min(700px, 90vw);
+    margin: 2rem auto;
 }
 
 canvas {
@@ -19,6 +20,8 @@ canvas {
 
 .content {
     z-index: 1;
+    width: 100%;
+    margin-top: max(2rem, calc(100vh - 52rem));
 }
 
 #name {
@@ -26,11 +29,8 @@ canvas {
 }
 
 nav {
-    position: absolute;
-    top: 1rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+    z-index: 1;
+    width: 100%;
 }
 
 nav ul {
@@ -38,50 +38,11 @@ nav ul {
     display: flex;
     flex-direction: column;
     gap: 1.3rem;
-    padding: 0rem;
-    margin-top: 1.4rem;
-    align-items: center;
-}
-
-nav ul li {
-    opacity: 0;
-    transform: translateY(-10px);
-    transition:
-        opacity 0.4s ease,
-        transform 0.4s ease;
+    padding: 0;
+    margin: 0;
+    align-items: left;
 }
 
 li a {
-    padding: 0.5rem;
-}
-
-.compass-icon {
-    width: 3rem;
-    transition: transform 0.6s ease;
-}
-
-.nav-toggle {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
     text-decoration: none;
-}
-
-nav.open ul li {
-    opacity: 1;
-    transform: translateY(0);
-}
-
-.nav-toggle[aria-expanded="true"] .compass-icon {
-    transform: rotate(90deg);
-}
-
-nav.open ul li:nth-child(1) {
-    transition-delay: 0.1s;
-}
-nav.open ul li:nth-child(2) {
-    transition-delay: 0.2s;
-}
-nav.open ul li:nth-child(3) {
-    transition-delay: 0.3s;
 }

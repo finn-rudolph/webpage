@@ -1,12 +1,5 @@
 import { init, frame, setMousePos, hsvToRgb } from "./fluid.js";
 
-const toggle = document.querySelector(".nav-toggle");
-const nav = document.querySelector("main nav");
-
-toggle.addEventListener("click", () => {
-  toggle.setAttribute("aria-expanded", nav.classList.toggle("open"));
-});
-
 const canvas = document.getElementById("fluidCanvas");
 
 let t0 = 500;

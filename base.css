@@ -2,11 +2,12 @@ body {
     font-family: "Lora", serif;
     font-size: 1.1rem;
     color: #222;
+    line-height: 1.5rem;
 }
 
 .content {
     margin: 2rem;
-    max-width: 60rem;
+    max-width: min(700px, 90vw);
     justify-self: center;
 }
 
@@ -16,7 +17,7 @@ a {
 }
 
 .home {
-    margin-bottom: 3rem;
+    margin-bottom: 2.5rem;
 }
 
 .back {
@@ -31,9 +32,15 @@ button {
     font-size: inherit;
     padding: 0;
     color: inherit;
+    cursor: pointer;
 }
 
 h1,
 h2 {
+    margin-top: 2.3rem;
     font-family: "Playfair Display", sans-serif;
+}
+
+h1 {
+    margin-bottom: 2.3rem;
 }
