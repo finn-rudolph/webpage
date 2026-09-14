@@ -2,11 +2,11 @@ import { init, frame, setMousePos, hsvToRgb } from "./fluid.js";
 
 const canvas = document.getElementById("fluidCanvas");
 
-let t0 = 300;
+let t0 = 600;
 const animationLength = 800;
 let started = false;
 const aspect_ratio = canvas.clientWidth / canvas.clientHeight;
-const r = Math.min(0.3, aspect_ratio * 0.4);
+const r = 0.3 * Math.min(1.0, aspect_ratio);
 
 function splash(state, time) {
   if (!started && time > t0) {
