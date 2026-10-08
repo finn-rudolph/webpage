@@ -17,7 +17,13 @@ for path in Path("./pictures").rglob("**/contents.json"):
 
         caption = ""
         if "caption" in pic_description:
-            caption += "<p>" + pic_description["caption"] + "</p>"
+            if "link" in pic_description:
+                caption += (
+                    f"<a href={pic_description['link']}/{pic_description['link']}.html class='link-arrow'>"
+                    + pic_description["caption"]
+                    + "</a>")
+            else:
+                caption += "<p>" + pic_description["caption"] + "</p>"
         if "location" in pic_description:
             caption += (
                 "<p>"

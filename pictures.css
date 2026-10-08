@@ -33,3 +33,8 @@ body {
     width: 100%;
     align-items: center;
 }
+
+.img-with-caption a {
+    line-height: 2.5rem;
+    text-decoration: none;
+}
