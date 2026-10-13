@@ -15,10 +15,6 @@ canvas {
     margin-top: max(4rem, calc(100vh - 50rem));
 }
 
-#name {
-    font-style: italic;
-    margin-bottom: 2rem;
-}
 
 nav {
     z-index: 1;
