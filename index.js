@@ -4,7 +4,7 @@ const canvas = document.getElementById("fluidCanvas");
 
 let animation_delay = 300;
 let animation_start = null;
-const animationLength = 800;
+const animationLength = 340;
 let started = false;
 let event_loop_runs = false;
 const aspect_ratio = canvas.clientWidth / canvas.clientHeight;
@@ -18,16 +18,15 @@ function splash(state, time) {
   if (!started && time > animation_start) {
     started = true;
     state.mouse.isDown = true;
-    setMousePos(state, aspect_ratio / 2 + r, 0.5);
+    setMousePos(state, 0.0, 0.0);
     state.mouse.color = hsvToRgb(Math.random(), 0.9, 1.0);
   } else if (time - animation_start > animationLength) {
     state.mouse.isDown = false;
   } else {
-    let a = (3 * Math.PI * (time - animation_start)) / animationLength;
     setMousePos(
       state,
-      0.5 * aspect_ratio + Math.cos(a) * r,
-      0.5 + Math.sin(a) * r,
+      (time - animation_start) * aspect_ratio / animationLength,
+      (time - animation_start) / animationLength,
     );
   }
 
