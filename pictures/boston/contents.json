@@ -2,6 +2,11 @@
   "title": "Boston / Cambridge",
   "pictures": [
     {
+      "file": "bostonhenge.webp",
+      "date": "Oct 30, 2026",
+      "location": "Stuart St, Boston"
+    },
+    {
       "file": "beacon-hill-sunset.webp",
       "date": "Sep 11, 2026",
       "location": "Myrtle St, Boston"
